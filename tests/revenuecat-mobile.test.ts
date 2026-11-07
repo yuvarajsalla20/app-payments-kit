@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { failure, parsePeriod, revenueCat, tierOf } from '../src/revenuecat';
+import { failure, parsePeriod, revenueCatMobile, tierOf } from '../revenuecat-mobile';
 import { Platform, opened } from './stubs/react-native';
 import { info, store } from './stubs/purchases';
 
 const U1 = '11111111-1111-4111-8111-111111111111';
 const U2 = '22222222-2222-4222-8222-222222222222';
 const make = (over = {}) =>
-  revenueCat({ iosKey: 'appl_x', androidKey: 'goog_x', plans: [{ id: 'yearly', tier: 'premium', package: 'ANNUAL' }, { id: 'monthly', tier: 'premium', package: 'MONTHLY' }], ...over });
+  revenueCatMobile({ iosKey: 'appl_x', androidKey: 'goog_x', plans: [{ id: 'yearly', tier: 'premium', package: 'ANNUAL' }, { id: 'monthly', tier: 'premium', package: 'MONTHLY' }], ...over });
 
 beforeEach(() => { store.reset(); Platform.OS = 'ios'; opened.length = 0; });
 
-describe('revenueCat provider', () => {
+describe('revenueCatMobile provider', () => {
   it('is not ready on web or without a key', () => {
     Platform.OS = 'web';
     expect(make().ready).toBe(false);

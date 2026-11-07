@@ -1,19 +1,14 @@
 import { Linking, Platform } from 'react-native';
 import Purchases, { LOG_LEVEL, PURCHASES_ERROR_CODE, type CustomerInfo, type PurchasesPackage } from 'react-native-purchases';
-import { DEFAULT_MESSAGES, periodDays, type PaymentMessages } from './messages';
-import { FREE, normalizeTiers, rank } from './tiers';
-import type { BuyResult, PaymentProvider, Period, PeriodUnit, Plan } from './types';
+import { DEFAULT_MESSAGES, periodDays, type PaymentMessages } from '../../core/messages';
+import { FREE, normalizeTiers } from '../../core/tiers';
+import type { BuyResult, PaymentProvider, Plan } from '../../core/types';
+import { findPackage, parsePeriod, tierOf, type RevenueCatPlan } from './shared';
 
-/** One plan the app sells, matched to a RevenueCat package in the current offering. */
-export interface RevenueCatPlan {
-  id: string;
-  tier: string;
-  /** A package type ('ANNUAL', 'SIX_MONTH', 'THREE_MONTH', 'MONTHLY', 'WEEKLY', 'LIFETIME') or a custom package identifier. */
-  package: string;
-}
+export { parsePeriod, tierOf, type RevenueCatPlan } from './shared';
 
-export interface RevenueCatOptions {
-  /** Public SDK keys from RevenueCat → Project → API keys. Safe to ship in the app. */
+export interface RevenueCatMobileOptions {
+  /** Public SDK keys from RevenueCat → Project → API keys (appl_… and goog_…). Safe to ship in the app. */
   iosKey?: string;
   androidKey?: string;
   /** In the order the app wants them shown. */
@@ -28,21 +23,6 @@ export interface RevenueCatOptions {
   debugLogs?: boolean;
 }
 
-const UNIT: Record<string, PeriodUnit> = { D: 'DAY', W: 'WEEK', M: 'MONTH', Y: 'YEAR' };
-
-/** "P1M", "P1Y", "P3M", "P1W" → { unit, count }; null for a one-off purchase. */
-export function parsePeriod(iso: string | null | undefined): Period | null {
-  const m = /^P(\d+)([DWMY])$/.exec(iso ?? '');
-  return m ? { unit: UNIT[m[2]!]!, count: Number(m[1]) } : null;
-}
-
-/** The highest tier whose entitlement is active. */
-export function tierOf(info: CustomerInfo | null | undefined, tiers: readonly string[], entitlements: Record<string, string> = {}): string {
-  const active = info?.entitlements?.active ?? {};
-  let best = FREE;
-  for (const t of tiers) if (t !== FREE && active[entitlements[t] ?? t] && rank(tiers, t) > rank(tiers, best)) best = t;
-  return best;
-}
 
 /** Turns a store error into a result the app can show. */
 export function failure(e: unknown, m: PaymentMessages = DEFAULT_MESSAGES): BuyResult {
@@ -56,8 +36,8 @@ export function failure(e: unknown, m: PaymentMessages = DEFAULT_MESSAGES): BuyR
   return { ok: false, cancelled: false, message: m.generic };
 }
 
-/** RevenueCat for the App Store and Google Play. */
-export function revenueCat(options: RevenueCatOptions): PaymentProvider {
+/** RevenueCat for the App Store and Google Play (iPhone and Android apps). For the website use `revenueCatWeb`. */
+export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvider {
   const tiers = normalizeTiers(options.tiers);
   const m: PaymentMessages = { ...DEFAULT_MESSAGES, ...options.messages };
   const key = (Platform.OS === 'ios' ? options.iosKey : Platform.OS === 'android' ? options.androidKey : '') ?? '';
@@ -82,7 +62,7 @@ export function revenueCat(options: RevenueCatOptions): PaymentProvider {
   const notSignedIn: BuyResult = { ok: false, cancelled: false, message: m.notSignedIn };
 
   return {
-    name: 'revenuecat',
+    name: 'revenuecat-mobile',
     ready,
     async start(userId) {
       if (!ready) return;
@@ -104,7 +84,7 @@ export function revenueCat(options: RevenueCatOptions): PaymentProvider {
       const offering = options.offering ? all.all[options.offering] : all.current;
       if (!offering) return [];
       const found = options.plans.flatMap((p) => {
-        const pkg = offering.availablePackages.find((x: PurchasesPackage) => x.packageType === p.package || x.identifier === p.package);
+        const pkg = findPackage(offering.availablePackages, p);
         return pkg ? [{ p, pkg }] : [];
       });
       // A free trial shows only if this person can still use it (one per person). Android already leaves a used trial out; iPhone must ask.

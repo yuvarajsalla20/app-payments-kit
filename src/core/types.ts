@@ -30,7 +30,7 @@ export type BuyResult =
 
 /** What a payment vendor must do. One adapter per vendor (RevenueCat, Stripe, ...). */
 export interface PaymentProvider {
-  /** Shown in logs and saved with purchases, such as 'revenuecat'. */
+  /** Shown in logs, such as 'revenuecat-mobile' or 'revenuecat-web'. */
   name: string;
   /** False when this provider can't sell here (no key, web without checkout, Expo Go without a native module). */
   ready: boolean;

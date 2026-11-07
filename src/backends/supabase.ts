@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { ServerSubscription, SubscriptionBackend, SubscriptionStatus } from './types';
+import type { ServerSubscription, SubscriptionBackend, SubscriptionStatus } from '../core/types';
 
 export interface SupabaseBackendOptions {
   /** Default 'subscriptions' (made by supabase/sql/subscriptions.sql). */
