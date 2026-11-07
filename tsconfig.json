@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "types": [],
+    "paths": {
+      "react-native": ["./tests/stubs/react-native.ts"]
+    }
+  },
+  "include": ["src", "revenuecat.ts", "supabase.ts", "supabase/functions/payments-webhook/core.ts", "supabase/functions/payments-webhook/revenuecat.ts", "typetests"]
+}
