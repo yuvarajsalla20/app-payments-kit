@@ -1,12 +1,13 @@
 {
   "name": "app-payments-kit",
-  "version": "1.0.0",
-  "description": "Reusable payments for React Native / Expo apps: one API over App Store and Google Play (RevenueCat), any number of tiers and plans, a Supabase webhook and subscriptions table, and a developer-only tester switch.",
+  "version": "2.0.0",
+  "description": "Reusable payments for React Native / Expo apps: one API over the App Store, Google Play (RevenueCat mobile) and the website (RevenueCat web), any number of tiers and plans, a Supabase webhook and subscriptions table, and a developer-only tester switch.",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "files": [
     "src",
-    "revenuecat.ts",
+    "revenuecat-mobile.ts",
+    "revenuecat-web.ts",
     "supabase.ts",
     "supabase/sql",
     "supabase/functions",
@@ -16,15 +17,24 @@
   "license": "MIT",
   "author": "Yuvaraj Salla",
   "peerDependencies": {
+    "@revenuecat/purchases-js": ">=1.0",
     "@supabase/supabase-js": ">=2.39",
     "react-native": ">=0.74",
     "react-native-purchases": ">=8"
   },
   "peerDependenciesMeta": {
-    "@supabase/supabase-js": { "optional": true },
-    "react-native-purchases": { "optional": true }
+    "@revenuecat/purchases-js": {
+      "optional": true
+    },
+    "@supabase/supabase-js": {
+      "optional": true
+    },
+    "react-native-purchases": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "@revenuecat/purchases-js": "^1.74.0",
     "@supabase/supabase-js": "^2.119.0",
     "react-native-purchases": "^10.16.0",
     "typescript": "^7.0.2",

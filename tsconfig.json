@@ -13,5 +13,5 @@
       "react-native": ["./tests/stubs/react-native.ts"]
     }
   },
-  "include": ["src", "revenuecat.ts", "supabase.ts", "supabase/functions/payments-webhook/core.ts", "supabase/functions/payments-webhook/revenuecat.ts", "typetests"]
+  "include": ["src", "revenuecat-mobile.ts", "revenuecat-web.ts", "supabase.ts", "supabase/functions/payments-webhook/core.ts", "supabase/functions/payments-webhook/revenuecat.ts", "typetests"]
 }

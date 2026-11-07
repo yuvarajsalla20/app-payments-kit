@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { highest, normalizeTiers, rank } from '../src/tiers';
+import { highest, normalizeTiers, rank } from '../src/core/tiers';
 
 describe('tiers', () => {
   it('defaults to free and premium, and always starts with free', () => {

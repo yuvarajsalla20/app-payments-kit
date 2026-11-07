@@ -1,5 +1,8 @@
 # Setting up payments
 
+This page sets up the iPhone and Android apps (`revenueCatMobile`). For the website, follow it first, then
+[revenuecat-web.md](revenuecat-web.md). Other vendors: [providers.md](providers.md).
+
 Never paste keys or passwords into chat or code. Put them straight into the places named below.
 
 ## 1. Store products
@@ -18,7 +21,7 @@ Tip: put a free trial on the longest plan only, so people can't take a free week
 3. **Offerings:** make the `default` offering current, with one package per plan. The kit finds plans by package type (`ANNUAL`, `SIX_MONTH`, `THREE_MONTH`, `MONTHLY`, `WEEKLY`, `LIFETIME`) or by a custom package identifier.
 4. **API keys:** copy the two public SDK keys (iOS starts with `appl_`, Android with `goog_`). Put them in your build's environment variables, for example `EXPO_PUBLIC_RC_IOS_KEY` and `EXPO_PUBLIC_RC_ANDROID_KEY`.
 
-`react-native-purchases` needs a development or store build. On the web, and wherever no key is set, `payments.ready` is false and `loadPlans()` returns nothing.
+`react-native-purchases` needs a development or store build. Wherever no provider is ready (no key, Expo Go), `payments.ready` is false and `loadPlans()` returns nothing. To sell on the website too, add `revenueCatWeb` ([revenuecat-web.md](revenuecat-web.md)).
 
 ## 3. The database (Supabase)
 

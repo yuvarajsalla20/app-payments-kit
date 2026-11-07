@@ -65,7 +65,7 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
   const kit = {
     tiers,
     provider,
-    /** False on web or Expo Go without a working provider: show "purchases open soon", never fake prices. */
+    /** False where no provider can sell (no key, Expo Go without a store): show "purchases open soon", never fake prices. */
     ready,
     messages,
 
@@ -85,6 +85,8 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
     async restore(): Promise<BuyResult> {
       return ready ? provider!.restore(userId) : notReady;
     },
+    /** False where there is no code box to offer (the website has none): hide "Have a code?". */
+    canRedeemCode: ready && !!provider!.redeemCode,
     async redeemCode(code = ''): Promise<void> {
       if (ready && provider!.redeemCode) return provider!.redeemCode(code);
     },

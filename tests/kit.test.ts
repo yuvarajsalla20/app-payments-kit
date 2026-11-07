@@ -38,6 +38,12 @@ describe('createPaymentsKit', () => {
     expect(await kit.buy({} as never)).toMatchObject({ ok: false, cancelled: false });
   });
 
+  it('offers a code box only when the provider can take codes', () => {
+    expect(createPaymentsKit({ providers: { ios: fakeProvider({ redeemCode: async () => {} }) } }).canRedeemCode).toBe(true);
+    expect(createPaymentsKit({ providers: { ios: fakeProvider() } }).canRedeemCode).toBe(false);
+    expect(createPaymentsKit({ providers: { ios: fakeProvider({ ready: false, redeemCode: async () => {} }) } }).canRedeemCode).toBe(false);
+  });
+
   it('books purchases to the account given to start()', async () => {
     const p = fakeProvider();
     const kit = createPaymentsKit({ providers: { ios: p } });
