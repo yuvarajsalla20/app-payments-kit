@@ -80,6 +80,30 @@ describe('createPaymentsKit', () => {
     expect(appState.listeners.size).toBe(0);
   });
 
+  it('watch() says nothing until the server row has been read once', async () => {
+    let answer: (row: ServerSubscription | null) => void = () => undefined;
+    const backend = { read: () => new Promise<ServerSubscription | null>((r) => { answer = r; }) };
+    const kit = createPaymentsKit({ providers: { ios: fakeProvider() }, tiers: ['free', 'premium'], backend });
+    const seen: TierState[] = [];
+    kit.watch('u1', (s) => seen.push(s));
+    await flush();
+    expect(seen).toEqual([]); // not "free" while the answer is still on its way
+    answer(row('premium', 30));
+    await flush();
+    expect(seen.at(-1)).toMatchObject({ tier: 'premium', source: 'account' });
+    // A failed read still answers (free), so the app is never stuck loading.
+    const failing = createPaymentsKit({ providers: { ios: fakeProvider() }, tiers: ['free', 'premium'], backend: { read: async () => { throw new Error('offline'); } } });
+    const seen2: TierState[] = [];
+    failing.watch('u1', (s) => seen2.push(s));
+    await flush();
+    expect(seen2.at(-1)?.tier).toBe('free');
+    // No account, or no backend: answers at once.
+    const seen3: TierState[] = [];
+    createPaymentsKit({ providers: { ios: fakeProvider() }, tiers: ['free', 'premium'], backend }).watch(null, (s) => seen3.push(s));
+    await flush();
+    expect(seen3.at(-1)?.tier).toBe('free');
+  });
+
   it('ignores the tester switch unless tester is on, and remembers it when on', async () => {
     const saved: Record<string, string> = {};
     const storage = { getItem: async (k: string) => saved[k] ?? null, setItem: async (k: string, v: string) => void (saved[k] = v) };

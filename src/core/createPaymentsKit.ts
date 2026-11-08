@@ -128,15 +128,19 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
       let store = FREE;
       let server: ServerSubscription | null = null;
       let stopStore = () => undefined as void;
+      // Nothing is reported until the account's row has been read once (or the read failed), so an app never shows
+      // a paying family "free" for the moment before the server answers. Without a backend or an account there is
+      // nothing to wait for.
+      let settled = !options.backend || !id;
       const emit = () => {
-        if (!live) return;
+        if (!live || !settled) return;
         const t = options.tester ? testerTier : null;
         const fromServer = serverTier(server);
         const tier = highest(tiers, store, fromServer, t);
         const source: TierSource = tier === FREE ? 'free' : rank(tiers, store) === rank(tiers, tier) ? 'store' : rank(tiers, fromServer) === rank(tiers, tier) ? 'account' : 'tester';
         cb({ tier, source, server });
       };
-      const checkServer = () => kit.readServer(id).then((row) => { server = row; emit(); }).catch((e) => report('payments:server', e));
+      const checkServer = () => kit.readServer(id).then((row) => { server = row; }).catch((e) => report('payments:server', e)).finally(() => { settled = true; emit(); });
       const checkStore = async () => {
         if (!ready) return;
         try {
