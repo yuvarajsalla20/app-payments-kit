@@ -35,6 +35,7 @@ export const store = {
   buyError: null as unknown,
   manageShown: 0,
   cacheDropped: 0,
+  synced: 0,
   canSign: true,
   discountedBought: null as string | null,
   listeners: new Set<(i: CustomerInfo) => void>(),
@@ -47,6 +48,7 @@ export const store = {
     this.buyError = null;
     this.manageShown = 0;
     this.cacheDropped = 0;
+    this.synced = 0;
     this.canSign = true;
     this.discountedBought = null;
     this.listeners.clear();
@@ -83,6 +85,7 @@ const Purchases = {
   removeCustomerInfoUpdateListener: (l: (i: CustomerInfo) => void) => store.listeners.delete(l),
   presentCodeRedemptionSheet: async () => undefined,
   showManageSubscriptions: async () => void store.manageShown++,
+  syncPurchasesForResult: async () => { store.synced++; return { customerInfo: store.customer }; },
   invalidateCustomerInfoCache: async () => void store.cacheDropped++,
   getPromotionalOffer: async (_p: unknown, d: { identifier: string }) => (store.canSign ? { identifier: d.identifier, signature: 'sig' } : undefined),
   purchaseDiscountedPackage: async (pkg: { product: { identifier: string } }, offer: { identifier: string }) => {

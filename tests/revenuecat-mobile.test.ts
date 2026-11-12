@@ -89,8 +89,11 @@ describe('revenueCatMobile provider', () => {
     const p = make();
     expect(await p.openManage!()).toBe(false);
     await p.start(U1);
+    store.customer = { entitlements: { active: { premium: { identifier: 'premium', productIdentifier: 'm', expirationDate: '2026-12-12T10:00:00Z', willRenew: true } } } } as unknown as typeof store.customer;
     expect(await p.openManage!()).toBe(true);
     expect(store.manageShown).toBe(1);
+    expect(store.synced).toBe(1); // pushed to RevenueCat when the sheet closed
+    expect(p.renewal!()?.willRenew).toBe(true);
   });
 
   it('reports when the paid tier ends and whether it renews', async () => {

@@ -154,6 +154,13 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
       // Apple's own sheet inside the app. Unlike the App Store page, it also lists TestFlight and sandbox subscriptions.
       if (Platform.OS !== 'ios' || !ready || !configured) return false;
       await Purchases.showManageSubscriptions();
+      // A cancel or renew in the sheet reaches RevenueCat only through Apple's server notification, which can lag or be
+      // missing. Sending this phone's purchases makes RevenueCat ask Apple now, so willRenew is right at once.
+      try {
+        tierFor((await Purchases.syncPurchasesForResult()).customerInfo);
+      } catch {
+        // The kit's refresh() asks again right after this, and twice more later.
+      }
       return true;
     },
     async refresh() {

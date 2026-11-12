@@ -60,7 +60,7 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
   /** Each watch() adds its own "check again", so refresh() can update every screen at once. */
   const checkers = new Set<() => void>();
   /** Apple can take a few seconds to pass a change to the store service, so a refresh looks again after these. */
-  const LATER_MS = [4000, 15000];
+  const LATER_MS = [4000, 15000, 45000];
 
   /** True when the server row gives this tier right now. */
   const serverTier = (row: ServerSubscription | null): string => {
@@ -117,7 +117,7 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
     },
 
     /**
-     * Asks the store again now (not its saved copy) and tells every watcher, then once more a little later. The in-app
+     * Asks the store again now (not its saved copy) and tells every watcher, then a few more times over the next 45 seconds. The in-app
      * manage sheet never sends the app to the background, so without this a cancel or renew there shows only minutes later.
      */
     async refresh(): Promise<void> {
