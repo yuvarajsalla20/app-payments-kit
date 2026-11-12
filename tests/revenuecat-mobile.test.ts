@@ -93,6 +93,20 @@ describe('revenueCatMobile provider', () => {
     expect(store.manageShown).toBe(1);
   });
 
+  it('reports when the paid tier ends and whether it renews', async () => {
+    const p = make();
+    await p.start(U1);
+    await p.currentTier();
+    expect(p.renewal!()).toBeNull();
+    const premium = (willRenew: boolean) => ({ entitlements: { active: { premium: { identifier: 'premium', expirationDate: '2026-11-12T10:00:00Z', willRenew } } } }) as unknown as typeof store.customer;
+    store.customer = premium(true);
+    await p.currentTier();
+    expect(p.renewal!()).toEqual({ until: '2026-11-12T10:00:00.000Z', willRenew: true });
+    store.customer = premium(false); // cancelled: still Premium until the date, then it ends
+    await p.currentTier();
+    expect(p.renewal!()).toEqual({ until: '2026-11-12T10:00:00.000Z', willRenew: false });
+  });
+
   it('leaves Android to the Play Store page', async () => {
     Platform.OS = 'android';
     const p = make();

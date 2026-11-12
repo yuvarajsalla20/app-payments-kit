@@ -1,7 +1,7 @@
 import { AppState, Linking, Platform } from 'react-native';
 import { DEFAULT_MESSAGES, type PaymentMessages } from './messages';
 import { FREE, highest, normalizeTiers, rank } from './tiers';
-import type { BuyResult, Plan, PaymentProvider, ServerSubscription, SubscriptionBackend } from './types';
+import type { BuyResult, Plan, PaymentProvider, Renewal, ServerSubscription, SubscriptionBackend } from './types';
 
 /** Saves the developer-only "pretend tier" switch between app starts (AsyncStorage fits). */
 export interface TesterStorage {
@@ -31,6 +31,8 @@ export interface TierState {
   source: TierSource;
   /** The server row, when there is one. */
   server: ServerSubscription | null;
+  /** When the store's paid tier ends or renews, and whether it renews; null unless the tier comes from the store. */
+  renewal: Renewal | null;
 }
 
 const TESTER_KEY = 'payments-kit:tester-tier';
@@ -146,7 +148,8 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
         const fromServer = serverTier(server);
         const tier = highest(tiers, store, fromServer, t);
         const source: TierSource = tier === FREE ? 'free' : rank(tiers, store) === rank(tiers, tier) ? 'store' : rank(tiers, fromServer) === rank(tiers, tier) ? 'account' : 'tester';
-        cb({ tier, source, server });
+        const renewal = source === 'store' ? provider?.renewal?.() ?? null : null;
+        cb({ tier, source, server, renewal });
       };
       const checkServer = () => kit.readServer(id).then((row) => { server = row; }).catch((e) => report('payments:server', e)).finally(() => { settled = true; emit(); });
       const checkStore = async () => {

@@ -80,6 +80,23 @@ describe('createPaymentsKit', () => {
     expect(appState.listeners.size).toBe(0);
   });
 
+  it("watch() passes the store's renewal date only while the tier comes from the store", async () => {
+    const ends = { until: '2026-11-12T10:00:00.000Z', willRenew: false };
+    const p = fakeProvider({ renewal: () => ends });
+    const kit = createPaymentsKit({ providers: { ios: p }, tester: true });
+    const seen: TierState[] = [];
+    const stop = kit.watch(null, (s) => seen.push(s));
+    await flush();
+    expect(seen.at(-1)).toMatchObject({ tier: 'free', renewal: null });
+    p.emit('premium');
+    expect(seen.at(-1)).toMatchObject({ tier: 'premium', source: 'store', renewal: ends });
+    p.emit('free');
+    await kit.setTesterTier('premium');
+    expect(seen.at(-1)).toMatchObject({ source: 'tester', renewal: null });
+    await kit.setTesterTier(null);
+    stop();
+  });
+
   it('watch() says nothing until the server row has been read once', async () => {
     let answer: (row: ServerSubscription | null) => void = () => undefined;
     const backend = { read: () => new Promise<ServerSubscription | null>((r) => { answer = r; }) };
