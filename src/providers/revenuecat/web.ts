@@ -2,7 +2,7 @@ import { ErrorCode, Purchases, type CustomerInfo, type Package } from '@revenuec
 import { DEFAULT_MESSAGES, periodDays, type PaymentMessages } from '../../core/messages';
 import { FREE, normalizeTiers } from '../../core/tiers';
 import type { BuyResult, PaymentProvider, Plan } from '../../core/types';
-import { findPackage, parsePeriod, tierOf, type RevenueCatPlan } from './shared';
+import { findPackage, parsePeriod, renewalOf, tierOf, type RevenueCatPlan } from './shared';
 
 export interface RevenueCatWebOptions {
   /**
@@ -60,7 +60,11 @@ export function revenueCatWeb(options: RevenueCatWebOptions): PaymentProvider {
   const m: PaymentMessages = { ...DEFAULT_MESSAGES, ...options.messages };
   const key = options.apiKey ?? '';
   const ready = key.length > 0;
-  const tierFor = (info: CustomerInfo | null | undefined) => tierOf(info, tiers, options.entitlements);
+  let last: CustomerInfo | null = null;
+  const tierFor = (info: CustomerInfo | null | undefined) => {
+    last = info ?? null;
+    return tierOf(info, tiers, options.entitlements);
+  };
 
   let rc: Purchases | null = null;
   let current: string | null = null;
@@ -130,11 +134,16 @@ export function revenueCatWeb(options: RevenueCatWebOptions): PaymentProvider {
     },
     async currentTier() {
       const p = signedIn();
-      return p ? seen(await p.getCustomerInfo()) : FREE;
+      if (p) return seen(await p.getCustomerInfo());
+      last = null;
+      return FREE;
     },
     onTierChange(cb) {
       listeners.add(cb);
       return () => { listeners.delete(cb); };
+    },
+    renewal() {
+      return renewalOf(last, tierOf(last, tiers, options.entitlements), options.entitlements);
     },
     // No redeemCode: App Store and Google Play codes can't be used on the web.
     manageUrl() {

@@ -46,8 +46,18 @@ export interface PaymentProvider {
   redeemCode?(code: string): Promise<void>;
   /** The store's own "manage subscription" page, or null when there is none. */
   manageUrl?(): string | null;
+  /** When the tier the store last reported ends or renews, and whether it renews. Null when free or unknown. */
+  renewal?(): Renewal | null;
   /** Shows the store's own manage screen inside the app. True when it was shown; false (or a throw) falls back to `manageUrl`. */
   openManage?(): Promise<boolean>;
+}
+
+/** The store's view of the paid tier: the date it ends or renews (ISO, null for lifetime) and whether it renews. */
+export interface Renewal {
+  until: string | null;
+  willRenew: boolean;
+  /** The store product that gives the tier, such as 'hringnring_monthly'. Null when the store doesn't say. */
+  productId: string | null;
 }
 
 /** Where the server-side subscription row is read from (Supabase now, Firebase later). */

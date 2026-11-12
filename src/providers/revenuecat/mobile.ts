@@ -3,7 +3,7 @@ import Purchases, { LOG_LEVEL, PURCHASES_ERROR_CODE, type CustomerInfo, type Pur
 import { DEFAULT_MESSAGES, periodDays, type PaymentMessages } from '../../core/messages';
 import { FREE, normalizeTiers } from '../../core/tiers';
 import type { BuyResult, PaymentProvider, Plan } from '../../core/types';
-import { findPackage, parsePeriod, tierOf, type RevenueCatPlan } from './shared';
+import { findPackage, parsePeriod, renewalOf, tierOf, type RevenueCatPlan } from './shared';
 
 export { parsePeriod, tierOf, type RevenueCatPlan } from './shared';
 
@@ -42,7 +42,12 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
   const m: PaymentMessages = { ...DEFAULT_MESSAGES, ...options.messages };
   const key = (Platform.OS === 'ios' ? options.iosKey : Platform.OS === 'android' ? options.androidKey : '') ?? '';
   const ready = Platform.OS !== 'web' && key.length > 0;
-  const tierFor = (info: CustomerInfo | null | undefined) => tierOf(info, tiers, options.entitlements);
+  // The last customer info seen, so renewal() can say when the tier ends without another store call.
+  let last: CustomerInfo | null = null;
+  const tierFor = (info: CustomerInfo | null | undefined) => {
+    last = info ?? null;
+    return tierOf(info, tiers, options.entitlements);
+  };
 
   let configured = false;
   let current: string | null = null;
@@ -141,6 +146,9 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
       // Apple shows its own code sheet; Google Play redeems codes in the Play Store.
       if (Platform.OS === 'ios') return Purchases.presentCodeRedemptionSheet();
       await Linking.openURL(`https://play.google.com/redeem?code=${encodeURIComponent(code.trim())}`);
+    },
+    renewal() {
+      return renewalOf(last, tierOf(last, tiers, options.entitlements), options.entitlements);
     },
     async openManage() {
       // Apple's own sheet inside the app. Unlike the App Store page, it also lists TestFlight and sandbox subscriptions.

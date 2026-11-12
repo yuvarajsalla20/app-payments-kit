@@ -4,4 +4,4 @@
 export { createPaymentsKit, type PaymentsKit, type PaymentsKitOptions, type TesterStorage, type TierSource, type TierState } from './core/createPaymentsKit';
 export { DEFAULT_MESSAGES, periodDays, type PaymentMessages } from './core/messages';
 export { FREE, highest, normalizeTiers, rank } from './core/tiers';
-export type { BuyResult, PaymentProvider, Period, PeriodUnit, Plan, ServerSubscription, SubscriptionBackend, SubscriptionStatus } from './core/types';
+export type { BuyResult, PaymentProvider, Period, Renewal, PeriodUnit, Plan, ServerSubscription, SubscriptionBackend, SubscriptionStatus } from './core/types';
