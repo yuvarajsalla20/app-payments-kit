@@ -46,6 +46,8 @@ export interface PaymentProvider {
   redeemCode?(code: string): Promise<void>;
   /** The store's own "manage subscription" page, or null when there is none. */
   manageUrl?(): string | null;
+  /** Shows the store's own manage screen inside the app. True when it was shown; false (or a throw) falls back to `manageUrl`. */
+  openManage?(): Promise<boolean>;
 }
 
 /** Where the server-side subscription row is read from (Supabase now, Firebase later). */

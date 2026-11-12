@@ -32,6 +32,7 @@ export const store = {
   packages: [pkg('ANNUAL', 'gp_yearly', 39.99, 'P1Y', { unit: 'WEEK', n: 1 }), pkg('MONTHLY', 'gp_monthly', 6.99, 'P1M')],
   eligible: 2,
   buyError: null as unknown,
+  manageShown: 0,
   listeners: new Set<(i: CustomerInfo) => void>(),
   reset() {
     this.user = null;
@@ -40,6 +41,7 @@ export const store = {
     this.customer = info();
     this.eligible = 2;
     this.buyError = null;
+    this.manageShown = 0;
     this.listeners.clear();
   },
 };
@@ -73,5 +75,6 @@ const Purchases = {
   addCustomerInfoUpdateListener: (l: (i: CustomerInfo) => void) => void store.listeners.add(l),
   removeCustomerInfoUpdateListener: (l: (i: CustomerInfo) => void) => store.listeners.delete(l),
   presentCodeRedemptionSheet: async () => undefined,
+  showManageSubscriptions: async () => void store.manageShown++,
 };
 export default Purchases;

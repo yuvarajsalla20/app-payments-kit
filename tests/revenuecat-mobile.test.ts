@@ -84,4 +84,20 @@ describe('revenueCatMobile provider', () => {
     await make().redeemCode!(' ab c ');
     expect(opened).toEqual(['https://play.google.com/redeem?code=ab%20c']);
   });
+
+  it("shows Apple's manage sheet in the app on iPhone, only once the store is set up", async () => {
+    const p = make();
+    expect(await p.openManage!()).toBe(false);
+    await p.start(U1);
+    expect(await p.openManage!()).toBe(true);
+    expect(store.manageShown).toBe(1);
+  });
+
+  it('leaves Android to the Play Store page', async () => {
+    Platform.OS = 'android';
+    const p = make();
+    await p.start(U1);
+    expect(await p.openManage!()).toBe(false);
+    expect(store.manageShown).toBe(0);
+  });
 });

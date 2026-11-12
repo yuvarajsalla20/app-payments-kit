@@ -94,7 +94,15 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
     manageUrl(): string | null {
       return provider?.manageUrl?.() ?? MANAGE[os] ?? null;
     },
+    /** The store's own manage screen inside the app where there is one, else its manage page. */
     async openManage(): Promise<void> {
+      if (ready && provider!.openManage) {
+        try {
+          if (await provider!.openManage()) return;
+        } catch (e) {
+          report('payments:manage', e);
+        }
+      }
       const url = kit.manageUrl();
       if (url) await Linking.openURL(url);
     },

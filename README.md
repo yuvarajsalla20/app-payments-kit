@@ -56,7 +56,7 @@ const stop = payments.watch(userId, ({ tier, source }) => setTier(tier));  // 'f
 const plans = await payments.loadPlans();     // [] where no provider is ready (no key, Expo Go): show "purchases open soon", never made-up prices
 const result = await payments.buy(plans[0]);  // { ok: true, tier } | { ok: false, cancelled, pending?, message }
 await payments.restore();
-await payments.openManage();                  // the store's own "manage subscription" page
+await payments.openManage();                  // the store's own "manage subscription" screen (in the app on iPhone)
 ```
 
 On sign-out call `payments.stop()`, so the next person on the phone never buys on the last person's account.
@@ -86,6 +86,11 @@ Apple, Google and Stripe hold the money: the kit never charges or refunds. A can
 - Phones (store products, RevenueCat, the SQL and the webhook): [docs/setup.md](docs/setup.md)
 - Website (Stripe and RevenueCat Web Billing): [docs/revenuecat-web.md](docs/revenuecat-web.md)
 - New vendors and the folder map: [docs/providers.md](docs/providers.md)
+
+## Changelog
+
+- **2.1.0**: `openManage()` on iPhone shows Apple's manage sheet inside the app (RevenueCat `showManageSubscriptions`), which also lists TestFlight and sandbox subscriptions. Android, the website, and any failure still open the store's manage page. Providers can add `openManage?()`.
+- **2.0.1**: `watch()` waits for the account's row before its first answer.
 
 ## Upgrading from 1.x
 
