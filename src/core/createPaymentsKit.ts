@@ -78,6 +78,11 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
 
     /** Call on sign-in and sign-out (null), so purchases follow the account to a new phone. */
     async start(id: string | null): Promise<void> {
+      // Another account (or none): the last one's pending re-checks after the manage sheet are of no use any more.
+      if (id !== userId) {
+        later.forEach(clearTimeout);
+        later = [];
+      }
       userId = id;
       if (ready) await provider!.start(id);
     },
