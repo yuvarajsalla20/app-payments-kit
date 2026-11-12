@@ -180,6 +180,21 @@ describe('createPaymentsKit', () => {
     }
   });
 
+  it('a newer refresh replaces the later checks of an older one', async () => {
+    vi.useFakeTimers();
+    try {
+      const refresh = vi.fn(async () => {});
+      const kit = createPaymentsKit({ providers: { ios: fakeProvider({ refresh }) } });
+      await kit.refresh();
+      await kit.refresh();
+      expect(refresh).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(50_000);
+      expect(refresh).toHaveBeenCalledTimes(5); // 2 now, then 3 later (not 6)
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('loads and buys a discount for subscribers only where the provider has one', async () => {
     const plan = { id: 'monthly', tier: 'premium', priceString: '$3.99', price: 3.99, currency: 'USD', period: { unit: 'MONTH' as const, count: 1 }, trialDays: null };
     const offer = { id: 'stay', plan, priceString: '$1.99', price: 1.99, period: { unit: 'MONTH' as const, count: 1 }, cycles: 3 };

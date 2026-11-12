@@ -48,8 +48,11 @@ export interface PaymentProvider {
   manageUrl?(): string | null;
   /** When the tier the store last reported ends or renews, and whether it renews. Null when free or unknown. */
   renewal?(): Renewal | null;
-  /** Shows the store's own manage screen inside the app. True when it was shown; false (or a throw) falls back to `manageUrl`. */
-  openManage?(): Promise<boolean>;
+  /**
+   * Shows the store's own manage screen inside the app. True when it was shown; false (or a throw) falls back to `manageUrl`.
+   * `userId` is the signed-in person: anything sent to the store afterwards is booked to them only.
+   */
+  openManage?(userId?: string | null): Promise<boolean>;
   /** Drops any saved copy of the store's answer, so the next currentTier() and renewal() ask the store again. */
   refresh?(): Promise<void>;
   /** A store discount for people who already subscribe (an App Store promotional offer), or null when the store has none by that id. */
