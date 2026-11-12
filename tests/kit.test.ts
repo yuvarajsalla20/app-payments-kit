@@ -155,4 +155,46 @@ describe('createPaymentsKit', () => {
     expect(opened).toEqual(Array(3).fill('https://apps.apple.com/account/subscriptions'));
     expect(errors).toEqual(['payments:manage']);
   });
+
+  it('asks the store again after the in-app manage sheet closes, then once more a little later', async () => {
+    vi.useFakeTimers();
+    try {
+      let willRenew = false;
+      const refresh = vi.fn(async () => {});
+      const p = fakeProvider({ openManage: async () => true, refresh, currentTier: async () => 'premium', renewal: () => ({ until: '2026-12-12T10:00:00.000Z', willRenew, productId: 'monthly' }) });
+      const kit = createPaymentsKit({ providers: { ios: p } });
+      const seen: TierState[] = [];
+      const stop = kit.watch(null, (s) => seen.push(s));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(seen.at(-1)?.renewal?.willRenew).toBe(false);
+      willRenew = true; // turned back on in Apple's sheet
+      await kit.openManage();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(refresh).toHaveBeenCalledOnce();
+      expect(seen.at(-1)?.renewal?.willRenew).toBe(true);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(refresh).toHaveBeenCalledTimes(3);
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('loads and buys a discount for subscribers only where the provider has one', async () => {
+    const plan = { id: 'monthly', tier: 'premium', priceString: '$3.99', price: 3.99, currency: 'USD', period: { unit: 'MONTH' as const, count: 1 }, trialDays: null };
+    const offer = { id: 'stay', plan, priceString: '$1.99', price: 1.99, period: { unit: 'MONTH' as const, count: 1 }, cycles: 3 };
+    const buyOffer = vi.fn(async () => ({ ok: true as const, tier: 'premium' }));
+    const kit = createPaymentsKit({ providers: { ios: fakeProvider({ loadOffer: async (id) => (id === 'stay' ? offer : null), buyOffer }) } });
+    expect(await kit.loadOffer('stay')).toEqual(offer);
+    expect(await kit.loadOffer('other')).toBeNull();
+    expect(await kit.loadOffer('')).toBeNull();
+    await kit.start('u1');
+    expect(await kit.buyOffer(offer)).toEqual({ ok: true, tier: 'premium' });
+    expect(buyOffer).toHaveBeenCalledWith(offer, 'u1');
+    const errors: string[] = [];
+    const broken = createPaymentsKit({ providers: { ios: fakeProvider({ loadOffer: async () => { throw new Error('x'); } }) }, onError: (w) => errors.push(w) });
+    expect(await broken.loadOffer('stay')).toBeNull();
+    expect(errors).toEqual(['payments:offer']);
+    expect(await createPaymentsKit({ providers: { ios: fakeProvider() } }).loadOffer('stay')).toBeNull();
+  });
 });

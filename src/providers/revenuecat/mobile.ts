@@ -1,8 +1,8 @@
 import { Linking, Platform } from 'react-native';
-import Purchases, { LOG_LEVEL, PURCHASES_ERROR_CODE, type CustomerInfo, type PurchasesPackage } from 'react-native-purchases';
+import Purchases, { LOG_LEVEL, PURCHASES_ERROR_CODE, type CustomerInfo, type PurchasesPackage, type PurchasesStoreProductDiscount } from 'react-native-purchases';
 import { DEFAULT_MESSAGES, periodDays, type PaymentMessages } from '../../core/messages';
 import { FREE, normalizeTiers } from '../../core/tiers';
-import type { BuyResult, PaymentProvider, Plan } from '../../core/types';
+import type { BuyResult, Offer, PaymentProvider, PeriodUnit, Plan } from '../../core/types';
 import { findPackage, parsePeriod, renewalOf, tierOf, type RevenueCatPlan } from './shared';
 
 export { parsePeriod, tierOf, type RevenueCatPlan } from './shared';
@@ -155,6 +155,38 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
       if (Platform.OS !== 'ios' || !ready || !configured) return false;
       await Purchases.showManageSubscriptions();
       return true;
+    },
+    async refresh() {
+      if (!ready || !configured) return;
+      await Purchases.invalidateCustomerInfoCache();
+      tierFor(await Purchases.getCustomerInfo());
+    },
+    async loadOffer(offerId) {
+      // Promotional offers are App Store only; Google Play has no matching kind.
+      if (Platform.OS !== 'ios' || !ready || !configured) return null;
+      for (const plan of await this.loadPlans()) {
+        const pkg = plan.native as PurchasesPackage | undefined;
+        const d = pkg?.product.discounts?.find((x: PurchasesStoreProductDiscount) => x.identifier === offerId);
+        if (pkg && d) {
+          return { id: offerId, plan, priceString: d.priceString, price: d.price, cycles: d.cycles, period: { unit: d.periodUnit as PeriodUnit, count: d.periodNumberOfUnits }, native: d };
+        }
+      }
+      return null;
+    },
+    async buyOffer(offer: Offer, userId) {
+      if (!ready || !configured) return { ok: false, cancelled: false, message: m.notReady };
+      const pkg = offer.plan.native as PurchasesPackage | undefined;
+      if (!pkg || !offer.native) return { ok: false, cancelled: false, message: m.storeUnreachable };
+      if (!(await storeIsFor(userId))) return notSignedIn;
+      try {
+        // RevenueCat signs the offer with the In-App Purchase key uploaded to it; without one this is undefined.
+        const signed = await Purchases.getPromotionalOffer(pkg.product, offer.native as PurchasesStoreProductDiscount);
+        if (!signed) return { ok: false, cancelled: false, message: m.storeUnreachable };
+        const { customerInfo } = await Purchases.purchaseDiscountedPackage(pkg, signed);
+        return { ok: true, tier: tierFor(customerInfo) };
+      } catch (e) {
+        return failure(e, m);
+      }
     },
     manageUrl() {
       return Platform.OS === 'ios' ? 'https://apps.apple.com/account/subscriptions' : Platform.OS === 'android' ? 'https://play.google.com/store/account/subscriptions' : null;

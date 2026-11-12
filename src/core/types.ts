@@ -50,6 +50,26 @@ export interface PaymentProvider {
   renewal?(): Renewal | null;
   /** Shows the store's own manage screen inside the app. True when it was shown; false (or a throw) falls back to `manageUrl`. */
   openManage?(): Promise<boolean>;
+  /** Drops any saved copy of the store's answer, so the next currentTier() and renewal() ask the store again. */
+  refresh?(): Promise<void>;
+  /** A store discount for people who already subscribe (an App Store promotional offer), or null when the store has none by that id. */
+  loadOffer?(offerId: string): Promise<Offer | null>;
+  buyOffer?(offer: Offer, userId: string | null): Promise<BuyResult>;
+}
+
+/** A discount for people who already subscribe, such as "$1.99/month for 3 months", with the store's own price. */
+export interface Offer {
+  /** The offer id set in the store, such as 'monthly_stay50'. */
+  id: string;
+  /** The plan it discounts. */
+  plan: Plan;
+  priceString: string;
+  price: number;
+  /** One discounted period, and how many of them. */
+  period: Period;
+  cycles: number;
+  /** The provider's own object. Apps should not read it. */
+  native?: unknown;
 }
 
 /** The store's view of the paid tier: the date it ends or renews (ISO, null for lifetime) and whether it renews. */
