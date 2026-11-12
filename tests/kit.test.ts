@@ -180,6 +180,22 @@ describe('createPaymentsKit', () => {
     }
   });
 
+  it("drops the later checks when someone else signs in or out", async () => {
+    vi.useFakeTimers();
+    try {
+      const refresh = vi.fn(async () => {});
+      const kit = createPaymentsKit({ providers: { ios: fakeProvider({ openManage: async () => true, refresh }) } });
+      await kit.start('u1');
+      await kit.openManage();
+      expect(refresh).toHaveBeenCalledOnce();
+      await kit.stop();
+      await vi.advanceTimersByTimeAsync(50_000);
+      expect(refresh).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('a newer refresh replaces the later checks of an older one', async () => {
     vi.useFakeTimers();
     try {

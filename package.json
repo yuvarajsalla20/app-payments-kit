@@ -1,6 +1,6 @@
 {
   "name": "app-payments-kit",
-  "version": "2.3.2",
+  "version": "2.3.3",
   "description": "Reusable payments for React Native / Expo apps: one API over the App Store, Google Play (RevenueCat mobile) and the website (RevenueCat web), any number of tiers and plans, a Supabase webhook and subscriptions table, and a developer-only tester switch.",
   "main": "src/index.ts",
   "types": "src/index.ts",

@@ -29,6 +29,7 @@ export const store = {
   user: null as string | null,
   configured: [] as unknown[],
   failLogIn: false,
+  failLogOut: false,
   customer: info(),
   packages: [pkg('ANNUAL', 'gp_yearly', 39.99, 'P1Y', { unit: 'WEEK', n: 1 }), pkg('MONTHLY', 'gp_monthly', 6.99, 'P1M')],
   eligible: 2,
@@ -43,6 +44,7 @@ export const store = {
     this.user = null;
     this.configured = [];
     this.failLogIn = false;
+    this.failLogOut = false;
     this.customer = info();
     this.eligible = 2;
     this.buyError = null;
@@ -68,6 +70,7 @@ const Purchases = {
     return { customerInfo: store.customer, created: false };
   },
   logOut: async () => {
+    if (store.failLogOut) throw new Error('offline');
     store.user = '$RCAnonymousID:y';
     return store.customer;
   },

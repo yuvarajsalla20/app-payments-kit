@@ -50,12 +50,20 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
   };
 
   let configured = false;
+  /** How RevenueCat names an id it made up for a phone with nobody signed in. */
+  const ANONYMOUS = '$RCAnonymousID:';
   let current: string | null = null;
 
   /** Makes sure the store is signed in as this account, so a purchase is never booked to the last person on this phone. */
   async function storeIsFor(userId: string | null): Promise<boolean> {
-    if (!userId) return true;
     try {
+      // Signed out: the store must be on an anonymous id, never still on the last person (a failed log-out leaves it there).
+      if (!userId) {
+        if ((await Purchases.getAppUserID()).startsWith(ANONYMOUS)) return true;
+        await Purchases.logOut();
+        current = null;
+        return (await Purchases.getAppUserID()).startsWith(ANONYMOUS);
+      }
       if ((await Purchases.getAppUserID()) === userId) return true;
       await Purchases.logIn(userId);
       current = userId;

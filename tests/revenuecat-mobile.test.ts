@@ -108,6 +108,20 @@ describe('revenueCatMobile provider', () => {
     expect(store.synced).toBe(1);
   });
 
+  it("never sends this phone's purchases to the last person after a sign-out that didn't reach the store", async () => {
+    const p = make();
+    await p.start(U1);
+    store.failLogOut = true;
+    await p.start(null); // the log-out fails quietly; the store is still on U1
+    expect(await p.openManage!(null)).toBe(true);
+    expect(store.manageShown).toBe(1);
+    expect(store.synced).toBe(0);
+    store.failLogOut = false;
+    await p.openManage!(null);
+    expect(store.synced).toBe(1);
+    expect(store.user?.startsWith('$RCAnonymousID:')).toBe(true);
+  });
+
   it('reports when the paid tier ends and whether it renews', async () => {
     const p = make();
     await p.start(U1);
