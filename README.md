@@ -90,6 +90,7 @@ Apple, Google and Stripe hold the money: the kit never charges or refunds. A can
 
 ## Changelog
 
+- **2.4.0**: after Apple's in-app manage sheet closes, `refresh()` looks again every 2 seconds for the first 12 seconds, then at 15, 20, 30 and 45 seconds, and stops as soon as the store's renewal differs from what it was before the sheet opened. `refresh(before?)` takes that earlier renewal (as text) to know when to stop.
 - **2.3.3**: signed out, buy, restore and the sync after the manage sheet first make sure the store is on an anonymous id (a log-out that failed quietly left it on the last person), so this phone's purchases never go to them. Signing in or out drops the later re-checks of an earlier `refresh()`.
 - **2.3.2**: the sync after Apple's manage sheet first makes sure the store is on the signed-in person, like buy and restore (`openManage(userId)` on providers). A newer `refresh()` replaces the later checks of an older one, so repeated calls no longer pile up timers.
 - **2.3.1**: after Apple's in-app manage sheet closes, RevenueCat mobile sends this phone's purchases to RevenueCat (`syncPurchasesForResult`), so a cancel or renew shows at once even when Apple's server notification is slow or not set up. `refresh()` now looks again at 4, 15 and 45 seconds.

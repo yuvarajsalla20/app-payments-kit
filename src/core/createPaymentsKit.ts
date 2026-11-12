@@ -60,8 +60,11 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
   /** Each watch() adds its own "check again", so refresh() can update every screen at once. */
   const checkers = new Set<() => void>();
   let later: ReturnType<typeof setTimeout>[] = [];
+  /** The store's renewal as text, to tell when it has changed. */
+  const renewalNow = () => JSON.stringify(provider?.renewal?.() ?? null);
   /** Apple can take a few seconds to pass a change to the store service, so a refresh looks again after these. */
-  const LATER_MS = [4000, 15000, 45000];
+  // Apple takes a few seconds to pass a change on: look every 2 seconds at first, then less often, for 45 seconds.
+  const LATER_MS = [2000, 4000, 6000, 8000, 10000, 12000, 15000, 20000, 30000, 45000];
 
   /** True when the server row gives this tier right now. */
   const serverTier = (row: ServerSubscription | null): string => {
@@ -110,8 +113,10 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
     async openManage(): Promise<void> {
       if (ready && provider!.openManage) {
         try {
+          // What the store said before the sheet opened, so the checks after it can stop once the change shows.
+          const before = renewalNow();
           if (await provider!.openManage(userId)) {
-            await kit.refresh();
+            await kit.refresh(before);
             return;
           }
         } catch (e) {
@@ -125,8 +130,13 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
     /**
      * Asks the store again now (not its saved copy) and tells every watcher, then a few more times over the next 45 seconds. The in-app
      * manage sheet never sends the app to the background, so without this a cancel or renew there shows only minutes later.
+     * With `before` (the store's renewal before a change), the later checks stop as soon as the store shows something else.
      */
-    async refresh(): Promise<void> {
+    async refresh(before?: string): Promise<void> {
+      const stop = () => {
+        later.forEach(clearTimeout);
+        later = [];
+      };
       const once = async () => {
         try {
           if (ready) await provider!.refresh?.();
@@ -134,10 +144,12 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
           report('payments:refresh', e);
         }
         checkers.forEach((c) => c());
+        if (before !== undefined && renewalNow() !== before) stop();
       };
-      await once();
       // A newer refresh replaces the later checks of an older one, so repeated calls don't pile up.
-      later.forEach(clearTimeout);
+      stop();
+      await once();
+      if (before !== undefined && renewalNow() !== before) return;
       later = LATER_MS.map((ms) => setTimeout(() => void once(), ms));
     },
 
