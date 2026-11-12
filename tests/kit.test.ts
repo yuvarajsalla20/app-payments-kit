@@ -172,8 +172,8 @@ describe('createPaymentsKit', () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(refresh).toHaveBeenCalledOnce();
       expect(seen.at(-1)?.renewal?.willRenew).toBe(true);
-      await vi.advanceTimersByTimeAsync(20_000);
-      expect(refresh).toHaveBeenCalledTimes(3);
+      await vi.advanceTimersByTimeAsync(50_000);
+      expect(refresh).toHaveBeenCalledTimes(4);
       stop();
     } finally {
       vi.useRealTimers();
