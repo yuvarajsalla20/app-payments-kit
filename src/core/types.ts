@@ -56,6 +56,8 @@ export interface PaymentProvider {
 export interface Renewal {
   until: string | null;
   willRenew: boolean;
+  /** The store product that gives the tier, such as 'hringnring_monthly'. Null when the store doesn't say. */
+  productId: string | null;
 }
 
 /** Where the server-side subscription row is read from (Supabase now, Firebase later). */

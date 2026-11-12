@@ -98,13 +98,13 @@ describe('revenueCatMobile provider', () => {
     await p.start(U1);
     await p.currentTier();
     expect(p.renewal!()).toBeNull();
-    const premium = (willRenew: boolean) => ({ entitlements: { active: { premium: { identifier: 'premium', expirationDate: '2026-11-12T10:00:00Z', willRenew } } } }) as unknown as typeof store.customer;
+    const premium = (willRenew: boolean) => ({ entitlements: { active: { premium: { identifier: 'premium', productIdentifier: 'hringnring_monthly', expirationDate: '2026-11-12T10:00:00Z', willRenew } } } }) as unknown as typeof store.customer;
     store.customer = premium(true);
     await p.currentTier();
-    expect(p.renewal!()).toEqual({ until: '2026-11-12T10:00:00.000Z', willRenew: true });
+    expect(p.renewal!()).toEqual({ until: '2026-11-12T10:00:00.000Z', willRenew: true, productId: 'hringnring_monthly' });
     store.customer = premium(false); // cancelled: still Premium until the date, then it ends
     await p.currentTier();
-    expect(p.renewal!()).toEqual({ until: '2026-11-12T10:00:00.000Z', willRenew: false });
+    expect(p.renewal!()).toEqual({ until: '2026-11-12T10:00:00.000Z', willRenew: false, productId: 'hringnring_monthly' });
   });
 
   it('leaves Android to the Play Store page', async () => {

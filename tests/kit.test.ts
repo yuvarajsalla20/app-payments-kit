@@ -81,7 +81,7 @@ describe('createPaymentsKit', () => {
   });
 
   it("watch() passes the store's renewal date only while the tier comes from the store", async () => {
-    const ends = { until: '2026-11-12T10:00:00.000Z', willRenew: false };
+    const ends = { until: '2026-11-12T10:00:00.000Z', willRenew: false, productId: 'monthly' };
     const p = fakeProvider({ renewal: () => ends });
     const kit = createPaymentsKit({ providers: { ios: p }, tester: true });
     const seen: TierState[] = [];

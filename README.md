@@ -53,7 +53,7 @@ export const payments = createPaymentsKit({
 ```ts
 // Anywhere
 const stop = payments.watch(userId, ({ tier, source, renewal }) => setTier(tier));  // 'free' | 'premium' …; source: store, account, tester
-// renewal: { until, willRenew } from the store while it gives the tier, so an app without a server can show "Ends Nov 12"
+// renewal: { until, willRenew, productId } from the store while it gives the tier, so an app without a server can show "Ends Nov 12"
 const plans = await payments.loadPlans();     // [] where no provider is ready (no key, Expo Go): show "purchases open soon", never made-up prices
 const result = await payments.buy(plans[0]);  // { ok: true, tier } | { ok: false, cancelled, pending?, message }
 await payments.restore();
@@ -90,7 +90,7 @@ Apple, Google and Stripe hold the money: the kit never charges or refunds. A can
 
 ## Changelog
 
-- **2.2.0**: `watch()` states carry `renewal` (`until`, `willRenew`) from the store's entitlement while the tier comes from the store. Providers can add `renewal?()`; both RevenueCat providers do.
+- **2.2.0**: `watch()` states carry `renewal` (`until`, `willRenew`, `productId`) from the store's entitlement while the tier comes from the store. Providers can add `renewal?()`; both RevenueCat providers do.
 - **2.1.0**: `openManage()` on iPhone shows Apple's manage sheet inside the app (RevenueCat `showManageSubscriptions`), which also lists TestFlight and sandbox subscriptions. Android, the website, and any failure still open the store's manage page. Providers can add `openManage?()`.
 - **2.0.1**: `watch()` waits for the account's row before its first answer.
 
