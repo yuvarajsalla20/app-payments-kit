@@ -135,8 +135,7 @@ describe('createPaymentsKit', () => {
     const broken = fakeProvider({ openManage: async () => { throw new Error('old iOS'); } });
     await createPaymentsKit({ providers: { ios: broken }, onError: (where) => errors.push(where) }).openManage();
     await createPaymentsKit({ providers: { ios: fakeProvider() } }).openManage();
-    expect(opened).toHaveLength(3);
-    expect(opened.every((u) => u.includes('apps.apple.com'))).toBe(true);
+    expect(opened).toEqual(Array(3).fill('https://apps.apple.com/account/subscriptions'));
     expect(errors).toEqual(['payments:manage']);
   });
 });
