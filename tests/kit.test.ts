@@ -173,7 +173,7 @@ describe('createPaymentsKit', () => {
       expect(refresh).toHaveBeenCalledOnce();
       expect(seen.at(-1)?.renewal?.willRenew).toBe(true);
       await vi.advanceTimersByTimeAsync(50_000);
-      expect(refresh).toHaveBeenCalledTimes(4);
+      expect(refresh).toHaveBeenCalledTimes(11); // nothing changed while the sheet was open: every 2 s, then less often
       stop();
     } finally {
       vi.useRealTimers();
@@ -196,6 +196,23 @@ describe('createPaymentsKit', () => {
     }
   });
 
+  it('stops checking as soon as the store shows the change made in the manage sheet', async () => {
+    vi.useFakeTimers();
+    try {
+      let willRenew = true;
+      let checks = 0;
+      // Apple passes the cancel on only by the third check after the sheet closes.
+      const refresh = vi.fn(async () => { checks += 1; if (checks === 3) willRenew = false; });
+      const p = fakeProvider({ openManage: async () => true, refresh, currentTier: async () => 'premium', renewal: () => ({ until: '2026-12-12T10:00:00.000Z', willRenew, productId: 'monthly' }) });
+      const kit = createPaymentsKit({ providers: { ios: p } });
+      await kit.openManage();
+      await vi.advanceTimersByTimeAsync(50_000);
+      expect(refresh).toHaveBeenCalledTimes(3); // now, at 2 s and at 4 s, then no more
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('a newer refresh replaces the later checks of an older one', async () => {
     vi.useFakeTimers();
     try {
@@ -205,7 +222,7 @@ describe('createPaymentsKit', () => {
       await kit.refresh();
       expect(refresh).toHaveBeenCalledTimes(2);
       await vi.advanceTimersByTimeAsync(50_000);
-      expect(refresh).toHaveBeenCalledTimes(5); // 2 now, then 3 later (not 6)
+      expect(refresh).toHaveBeenCalledTimes(12); // 2 now, then 10 later (not 20)
     } finally {
       vi.useRealTimers();
     }
