@@ -21,6 +21,7 @@ const pkg = (packageType: string, id: string, price: number, period: string | nu
     currencyCode: 'USD',
     subscriptionPeriod: period,
     introPrice: trial ? { price: 0, periodUnit: trial.unit, periodNumberOfUnits: trial.n } : null,
+    discounts: period === 'P1M' ? [{ identifier: 'monthly_stay50', price: 3.49, priceString: '$3.49', cycles: 3, periodUnit: 'MONTH', periodNumberOfUnits: 1 }] : [],
   },
 });
 
@@ -33,6 +34,9 @@ export const store = {
   eligible: 2,
   buyError: null as unknown,
   manageShown: 0,
+  cacheDropped: 0,
+  canSign: true,
+  discountedBought: null as string | null,
   listeners: new Set<(i: CustomerInfo) => void>(),
   reset() {
     this.user = null;
@@ -42,6 +46,9 @@ export const store = {
     this.eligible = 2;
     this.buyError = null;
     this.manageShown = 0;
+    this.cacheDropped = 0;
+    this.canSign = true;
+    this.discountedBought = null;
     this.listeners.clear();
   },
 };
@@ -76,5 +83,13 @@ const Purchases = {
   removeCustomerInfoUpdateListener: (l: (i: CustomerInfo) => void) => store.listeners.delete(l),
   presentCodeRedemptionSheet: async () => undefined,
   showManageSubscriptions: async () => void store.manageShown++,
+  invalidateCustomerInfoCache: async () => void store.cacheDropped++,
+  getPromotionalOffer: async (_p: unknown, d: { identifier: string }) => (store.canSign ? { identifier: d.identifier, signature: 'sig' } : undefined),
+  purchaseDiscountedPackage: async (pkg: { product: { identifier: string } }, offer: { identifier: string }) => {
+    if (store.buyError) throw store.buyError;
+    store.discountedBought = `${pkg.product.identifier}:${offer.identifier}`;
+    store.customer = info('premium');
+    return { customerInfo: store.customer };
+  },
 };
 export default Purchases;

@@ -90,6 +90,7 @@ Apple, Google and Stripe hold the money: the kit never charges or refunds. A can
 
 ## Changelog
 
+- **2.3.0**: `refresh()` asks the store again (not its saved copy) and updates every `watch()`, then looks twice more over the next 15 seconds. `openManage()` calls it when Apple's in-app sheet closes, so a cancel or renew shows at once. `loadOffer(id)` / `buyOffer(offer)` sell an App Store promotional offer to people who already subscribe (RevenueCat signs it with the In-App Purchase key uploaded to it); `loadOffer` is null where there is none. Providers can add `refresh?()`, `loadOffer?()` and `buyOffer?()`.
 - **2.2.0**: `watch()` states carry `renewal` (`until`, `willRenew`, `productId`) from the store's entitlement while the tier comes from the store. Providers can add `renewal?()`; both RevenueCat providers do.
 - **2.1.0**: `openManage()` on iPhone shows Apple's manage sheet inside the app (RevenueCat `showManageSubscriptions`), which also lists TestFlight and sandbox subscriptions. Android, the website, and any failure still open the store's manage page. Providers can add `openManage?()`.
 - **2.0.1**: `watch()` waits for the account's row before its first answer.

@@ -1,7 +1,7 @@
 import { AppState, Linking, Platform } from 'react-native';
 import { DEFAULT_MESSAGES, type PaymentMessages } from './messages';
 import { FREE, highest, normalizeTiers, rank } from './tiers';
-import type { BuyResult, Plan, PaymentProvider, Renewal, ServerSubscription, SubscriptionBackend } from './types';
+import type { BuyResult, Offer, Plan, PaymentProvider, Renewal, ServerSubscription, SubscriptionBackend } from './types';
 
 /** Saves the developer-only "pretend tier" switch between app starts (AsyncStorage fits). */
 export interface TesterStorage {
@@ -57,6 +57,10 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
     : Promise.resolve();
 
   const notReady: BuyResult = { ok: false, cancelled: false, message: messages.notReady };
+  /** Each watch() adds its own "check again", so refresh() can update every screen at once. */
+  const checkers = new Set<() => void>();
+  /** Apple can take a few seconds to pass a change to the store service, so a refresh looks again after these. */
+  const LATER_MS = [4000, 15000];
 
   /** True when the server row gives this tier right now. */
   const serverTier = (row: ServerSubscription | null): string => {
@@ -100,13 +104,48 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
     async openManage(): Promise<void> {
       if (ready && provider!.openManage) {
         try {
-          if (await provider!.openManage()) return;
+          if (await provider!.openManage()) {
+            await kit.refresh();
+            return;
+          }
         } catch (e) {
           report('payments:manage', e);
         }
       }
       const url = kit.manageUrl();
       if (url) await Linking.openURL(url);
+    },
+
+    /**
+     * Asks the store again now (not its saved copy) and tells every watcher, then once more a little later. The in-app
+     * manage sheet never sends the app to the background, so without this a cancel or renew there shows only minutes later.
+     */
+    async refresh(): Promise<void> {
+      const once = async () => {
+        try {
+          if (ready) await provider!.refresh?.();
+        } catch (e) {
+          report('payments:refresh', e);
+        }
+        checkers.forEach((c) => c());
+      };
+      await once();
+      LATER_MS.forEach((ms) => setTimeout(() => void once(), ms));
+    },
+
+    /** A discount for people who already subscribe, by its store id; null where the store has none (or can't have one). */
+    async loadOffer(offerId: string): Promise<Offer | null> {
+      if (!ready || !provider!.loadOffer || !offerId) return null;
+      try {
+        return await provider!.loadOffer(offerId);
+      } catch (e) {
+        report('payments:offer', e);
+        return null;
+      }
+    },
+    async buyOffer(offer: Offer): Promise<BuyResult> {
+      if (!ready || !provider!.buyOffer) return notReady;
+      return provider!.buyOffer(offer, userId);
     },
 
     /** The developer switch is offered only when `tester` is on (development builds). */
@@ -168,10 +207,11 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
       const check = () => { void checkServer(); void checkStore(); };
       const onTester = () => emit();
       testerListeners.add(onTester);
+      checkers.add(check);
       void testerLoaded.then(emit);
       check();
       const sub = AppState.addEventListener('change', (s) => { if (s === 'active') check(); });
-      return () => { live = false; stopStore(); sub.remove(); testerListeners.delete(onTester); };
+      return () => { live = false; stopStore(); sub.remove(); testerListeners.delete(onTester); checkers.delete(check); };
     },
   };
   return kit;

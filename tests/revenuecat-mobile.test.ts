@@ -114,4 +114,30 @@ describe('revenueCatMobile provider', () => {
     expect(await p.openManage!()).toBe(false);
     expect(store.manageShown).toBe(0);
   });
+
+  it("drops the saved customer info and asks the store again", async () => {
+    const p = make();
+    await p.refresh!();
+    expect(store.cacheDropped).toBe(0);
+    await p.start(U1);
+    await p.currentTier();
+    store.customer = { entitlements: { active: { premium: { identifier: 'premium', productIdentifier: 'm', expirationDate: '2026-12-12T10:00:00Z', willRenew: true } } } } as unknown as typeof store.customer;
+    await p.refresh!();
+    expect(store.cacheDropped).toBe(1);
+    expect(p.renewal!()?.willRenew).toBe(true);
+  });
+
+  it('finds an App Store promotional offer by id and buys it signed', async () => {
+    const p = make();
+    await p.start(U1);
+    const offer = await p.loadOffer!('monthly_stay50');
+    expect(offer).toMatchObject({ id: 'monthly_stay50', priceString: '$3.49', cycles: 3, period: { unit: 'MONTH', count: 1 }, plan: { id: 'monthly' } });
+    expect(await p.loadOffer!('nope')).toBeNull();
+    expect(await p.buyOffer!(offer!, U1)).toEqual({ ok: true, tier: 'premium' });
+    expect(store.discountedBought).toBe('gp_monthly:monthly_stay50');
+    store.canSign = false; // no In-App Purchase key in RevenueCat
+    expect(await p.buyOffer!(offer!, U1)).toMatchObject({ ok: false, cancelled: false });
+    Platform.OS = 'android';
+    expect(await make().loadOffer!('monthly_stay50')).toBeNull();
+  });
 });
