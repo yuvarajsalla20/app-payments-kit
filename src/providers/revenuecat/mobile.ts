@@ -142,6 +142,12 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
       if (Platform.OS === 'ios') return Purchases.presentCodeRedemptionSheet();
       await Linking.openURL(`https://play.google.com/redeem?code=${encodeURIComponent(code.trim())}`);
     },
+    async openManage() {
+      // Apple's own sheet inside the app. Unlike the App Store page, it also lists TestFlight and sandbox subscriptions.
+      if (Platform.OS !== 'ios' || !ready || !configured) return false;
+      await Purchases.showManageSubscriptions();
+      return true;
+    },
     manageUrl() {
       return Platform.OS === 'ios' ? 'https://apps.apple.com/account/subscriptions' : Platform.OS === 'android' ? 'https://play.google.com/store/account/subscriptions' : null;
     },

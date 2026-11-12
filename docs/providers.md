@@ -63,7 +63,7 @@ Say you add Paddle without RevenueCat. Use the name everywhere: folder `paddle`,
    | `buy(plan, userId)` | Run checkout for **this** account only; return `{ ok: true, tier }` or a friendly failure |
    | `restore(userId)` | Look again at what this account owns |
    | `currentTier()`, `onTierChange(cb)` | The highest tier the vendor says the account has, and changes to it |
-   | `redeemCode?`, `manageUrl?` | Optional: leave out what the vendor doesn't have |
+   | `redeemCode?`, `manageUrl?`, `openManage?` | Optional: leave out what the vendor doesn't have |
 
    Turn the vendor's errors into a `BuyResult` with the shared `PaymentMessages`, and treat "the person closed
    checkout" as `cancelled: true` with no message.

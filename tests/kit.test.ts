@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPaymentsKit, type PaymentProvider, type ServerSubscription, type TierState } from '../src';
-import { Platform, appState } from './stubs/react-native';
+import { Platform, appState, opened } from './stubs/react-native';
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 const fakeProvider = (over: Partial<PaymentProvider> = {}): PaymentProvider & { emit: (t: string) => void } => {
@@ -121,5 +121,22 @@ describe('createPaymentsKit', () => {
 
   it('opens the store manage page', () => {
     expect(createPaymentsKit({ providers: {} }).manageUrl()).toContain('apps.apple.com');
+  });
+
+  it("opens the provider's in-app manage screen, and the manage page when it has none or it fails", async () => {
+    opened.length = 0;
+    const sheet = vi.fn(async () => true);
+    await createPaymentsKit({ providers: { ios: fakeProvider({ openManage: sheet }) } }).openManage();
+    expect(sheet).toHaveBeenCalledOnce();
+    expect(opened).toEqual([]);
+
+    await createPaymentsKit({ providers: { ios: fakeProvider({ openManage: async () => false }) } }).openManage();
+    const errors: string[] = [];
+    const broken = fakeProvider({ openManage: async () => { throw new Error('old iOS'); } });
+    await createPaymentsKit({ providers: { ios: broken }, onError: (where) => errors.push(where) }).openManage();
+    await createPaymentsKit({ providers: { ios: fakeProvider() } }).openManage();
+    expect(opened).toHaveLength(3);
+    expect(opened.every((u) => u.includes('apps.apple.com'))).toBe(true);
+    expect(errors).toEqual(['payments:manage']);
   });
 });
