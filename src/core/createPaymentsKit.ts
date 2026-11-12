@@ -59,6 +59,7 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
   const notReady: BuyResult = { ok: false, cancelled: false, message: messages.notReady };
   /** Each watch() adds its own "check again", so refresh() can update every screen at once. */
   const checkers = new Set<() => void>();
+  let later: ReturnType<typeof setTimeout>[] = [];
   /** Apple can take a few seconds to pass a change to the store service, so a refresh looks again after these. */
   const LATER_MS = [4000, 15000, 45000];
 
@@ -104,7 +105,7 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
     async openManage(): Promise<void> {
       if (ready && provider!.openManage) {
         try {
-          if (await provider!.openManage()) {
+          if (await provider!.openManage(userId)) {
             await kit.refresh();
             return;
           }
@@ -130,7 +131,9 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
         checkers.forEach((c) => c());
       };
       await once();
-      LATER_MS.forEach((ms) => setTimeout(() => void once(), ms));
+      // A newer refresh replaces the later checks of an older one, so repeated calls don't pile up.
+      later.forEach(clearTimeout);
+      later = LATER_MS.map((ms) => setTimeout(() => void once(), ms));
     },
 
     /** A discount for people who already subscribe, by its store id; null where the store has none (or can't have one). */

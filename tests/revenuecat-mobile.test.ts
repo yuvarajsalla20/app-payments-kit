@@ -96,6 +96,18 @@ describe('revenueCatMobile provider', () => {
     expect(p.renewal!()?.willRenew).toBe(true);
   });
 
+  it("never sends this phone's purchases to the store while it is on someone else", async () => {
+    const p = make();
+    await p.start(U1);
+    store.failLogIn = true;
+    expect(await p.openManage!(U2)).toBe(true);
+    expect(store.manageShown).toBe(1);
+    expect(store.synced).toBe(0);
+    store.failLogIn = false;
+    await p.openManage!(U1);
+    expect(store.synced).toBe(1);
+  });
+
   it('reports when the paid tier ends and whether it renews', async () => {
     const p = make();
     await p.start(U1);

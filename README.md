@@ -90,6 +90,7 @@ Apple, Google and Stripe hold the money: the kit never charges or refunds. A can
 
 ## Changelog
 
+- **2.3.2**: the sync after Apple's manage sheet first makes sure the store is on the signed-in person, like buy and restore (`openManage(userId)` on providers). A newer `refresh()` replaces the later checks of an older one, so repeated calls no longer pile up timers.
 - **2.3.1**: after Apple's in-app manage sheet closes, RevenueCat mobile sends this phone's purchases to RevenueCat (`syncPurchasesForResult`), so a cancel or renew shows at once even when Apple's server notification is slow or not set up. `refresh()` now looks again at 4, 15 and 45 seconds.
 - **2.3.0**: `refresh()` asks the store again (not its saved copy) and updates every `watch()`, then looks twice more over the next 15 seconds. `openManage()` calls it when Apple's in-app sheet closes, so a cancel or renew shows at once. `loadOffer(id)` / `buyOffer(offer)` sell an App Store promotional offer to people who already subscribe (RevenueCat signs it with the In-App Purchase key uploaded to it); `loadOffer` is null where there is none. Providers can add `refresh?()`, `loadOffer?()` and `buyOffer?()`.
 - **2.2.0**: `watch()` states carry `renewal` (`until`, `willRenew`, `productId`) from the store's entitlement while the tier comes from the store. Providers can add `renewal?()`; both RevenueCat providers do.

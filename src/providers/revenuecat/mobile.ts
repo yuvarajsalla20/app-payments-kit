@@ -66,7 +66,7 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
   }
   const notSignedIn: BuyResult = { ok: false, cancelled: false, message: m.notSignedIn };
 
-  return {
+  const provider: PaymentProvider = {
     name: 'revenuecat-mobile',
     ready,
     async start(userId) {
@@ -150,12 +150,14 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
     renewal() {
       return renewalOf(last, tierOf(last, tiers, options.entitlements), options.entitlements);
     },
-    async openManage() {
+    async openManage(userId = null) {
       // Apple's own sheet inside the app. Unlike the App Store page, it also lists TestFlight and sandbox subscriptions.
       if (Platform.OS !== 'ios' || !ready || !configured) return false;
       await Purchases.showManageSubscriptions();
       // A cancel or renew in the sheet reaches RevenueCat only through Apple's server notification, which can lag or be
       // missing. Sending this phone's purchases makes RevenueCat ask Apple now, so willRenew is right at once.
+      // Like buy and restore: never send this phone's purchases while the store is still on someone else.
+      if (!(await storeIsFor(userId))) return true;
       try {
         tierFor((await Purchases.syncPurchasesForResult()).customerInfo);
       } catch {
@@ -171,7 +173,7 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
     async loadOffer(offerId) {
       // Promotional offers are App Store only; Google Play has no matching kind.
       if (Platform.OS !== 'ios' || !ready || !configured) return null;
-      for (const plan of await this.loadPlans()) {
+      for (const plan of await provider.loadPlans()) {
         const pkg = plan.native as PurchasesPackage | undefined;
         const d = pkg?.product.discounts?.find((x: PurchasesStoreProductDiscount) => x.identifier === offerId);
         if (pkg && d) {
@@ -199,4 +201,5 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
       return Platform.OS === 'ios' ? 'https://apps.apple.com/account/subscriptions' : Platform.OS === 'android' ? 'https://play.google.com/store/account/subscriptions' : null;
     },
   };
+  return provider;
 }
