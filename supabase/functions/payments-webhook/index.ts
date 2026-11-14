@@ -33,7 +33,9 @@ Deno.serve(async (req) => {
   if (!secret || !sameSecret(`Bearer ${secret}`, req.headers.get('authorization') ?? '')) return json({ error: 'unauthorized' }, 401);
 
   const name = new URL(req.url).pathname.split('/').filter(Boolean).pop() ?? '';
-  const toChange = PROVIDERS[name] ?? PROVIDERS.revenuecat!;
+  // Only a path this function knows: anything else is turned away instead of being read as RevenueCat.
+  const toChange = Object.prototype.hasOwnProperty.call(PROVIDERS, name) ? PROVIDERS[name]! : name === 'payments-webhook' ? PROVIDERS.revenuecat! : null;
+  if (!toChange) return json({ error: 'unknown provider' }, 404);
   let body: unknown;
   try {
     body = await req.json();
