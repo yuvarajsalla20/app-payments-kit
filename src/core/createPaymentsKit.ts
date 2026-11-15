@@ -64,6 +64,8 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
   const renewalNow = () => JSON.stringify(provider?.renewal?.() ?? null);
   /** Apple can take a few seconds to pass a change to the store service, so a refresh looks again after these. */
   // Apple takes a few seconds to pass a change on: look every 2 seconds at first, then less often, for 45 seconds.
+  /** The longest watch() waits for the store's first answer before it reports what it has (the store may be offline). */
+  const STORE_WAIT_MS = 5000;
   const LATER_MS = [2000, 4000, 6000, 8000, 10000, 12000, 15000, 20000, 30000, 45000];
 
   /** True when the server row gives this tier right now. */
@@ -201,8 +203,12 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
       // a paying family "free" for the moment before the server answers. Without a backend or an account there is
       // nothing to wait for.
       let settled = !options.backend || !id;
+      // Nor until the store has answered once (or failed, or STORE_WAIT_MS passed): without it a Premium account
+      // reads "free" for a moment at every launch, and an app that schedules by tier does it twice.
+      let storeSettled = !ready;
+      const storeWait = ready ? setTimeout(() => { storeSettled = true; emit(); }, STORE_WAIT_MS) : undefined;
       const emit = () => {
-        if (!live || !settled) return;
+        if (!live || !settled || !storeSettled) return;
         const t = options.tester ? testerTier : null;
         const fromServer = serverTier(server);
         const tier = highest(tiers, store, fromServer, t);
@@ -219,10 +225,12 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
           stopStore();
           stopStore = provider!.onTierChange((t) => { store = t; emit(); });
           store = await provider!.currentTier();
-          emit();
         } catch (e) {
           report('payments:store', e);
         }
+        storeSettled = true;
+        clearTimeout(storeWait);
+        emit();
       };
       const check = () => { void checkServer(); void checkStore(); };
       const onTester = () => emit();
@@ -231,7 +239,7 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
       void testerLoaded.then(emit);
       check();
       const sub = AppState.addEventListener('change', (s) => { if (s === 'active') check(); });
-      return () => { live = false; stopStore(); sub.remove(); testerListeners.delete(onTester); checkers.delete(check); };
+      return () => { live = false; clearTimeout(storeWait); stopStore(); sub.remove(); testerListeners.delete(onTester); checkers.delete(check); };
     },
   };
   return kit;

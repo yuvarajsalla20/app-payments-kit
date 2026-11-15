@@ -246,3 +246,34 @@ describe('createPaymentsKit', () => {
     expect(await createPaymentsKit({ providers: { ios: fakeProvider() } }).loadOffer('stay')).toBeNull();
   });
 });
+
+describe('watch waits for the store', () => {
+  it('never reports free for a paying account before the store has answered', async () => {
+    Platform.OS = 'ios';
+    let release!: () => void;
+    const slow = new Promise<void>((r) => { release = r; });
+    const kit = createPaymentsKit({ providers: { ios: fakeProvider({ start: vi.fn(async () => { await slow; }), currentTier: async () => 'premium' }) } });
+    const seen: string[] = [];
+    const stop = kit.watch('user-1', (s) => seen.push(s.tier));
+    await flush();
+    expect(seen).toEqual([]);
+    release();
+    await flush();
+    expect(seen).toEqual(['premium']);
+    stop();
+  });
+
+  it('reports what it has once the store is slow for too long', async () => {
+    vi.useFakeTimers();
+    try {
+      Platform.OS = 'ios';
+      const kit = createPaymentsKit({ providers: { ios: fakeProvider({ start: () => new Promise<void>(() => undefined) }) } });
+      const seen: string[] = [];
+      kit.watch('user-1', (s) => seen.push(s.tier));
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(seen).toEqual(['free']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
