@@ -90,6 +90,7 @@ Apple, Google and Stripe hold the money: the kit never charges or refunds. A can
 
 ## Changelog
 
+- **2.5.0**: `openManage(onClosed?)` calls `onClosed` the moment Apple's manage sheet closes, before the store is asked again, so a page can show its loader at once (providers get it as a second argument; an older provider's sheet still triggers it once it returns). The checks after the sheet now stop only when auto-renew or the plan changes, not when the end date alone moves, so a fresher date can no longer end them before Apple's real answer arrives.
 - **2.4.1**: `watch()` also waits for the store's first answer (at most 5 seconds) before it reports, so a Premium account no longer reads "free" for a moment at every launch. The webhook turns away a path it does not know (404) instead of reading it as RevenueCat; the bare `/payments-webhook` still means RevenueCat.
 - **2.4.0**: after Apple's in-app manage sheet closes, `refresh()` looks again every 2 seconds for the first 12 seconds, then at 15, 20, 30 and 45 seconds, and stops as soon as the store's renewal differs from what it was before the sheet opened. `refresh(before?)` takes that earlier renewal (as text) to know when to stop.
 - **2.3.3**: signed out, buy, restore and the sync after the manage sheet first make sure the store is on an anonymous id (a log-out that failed quietly left it on the last person), so this phone's purchases never go to them. Signing in or out drops the later re-checks of an earlier `refresh()`.

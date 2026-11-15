@@ -60,8 +60,14 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
   /** Each watch() adds its own "check again", so refresh() can update every screen at once. */
   const checkers = new Set<() => void>();
   let later: ReturnType<typeof setTimeout>[] = [];
-  /** The store's renewal as text, to tell when it has changed. */
-  const renewalNow = () => JSON.stringify(provider?.renewal?.() ?? null);
+  /**
+   * What the person can change in the manage sheet (auto-renew on or off, the plan), as text, to tell when it has changed.
+   * The end date is left out: it can move on its own (a renewal, a fresher copy) and must not stop the checks before the real change shows.
+   */
+  const renewalNow = () => {
+    const r = provider?.renewal?.() ?? null;
+    return JSON.stringify(r ? [r.willRenew, r.productId ?? null] : null);
+  };
   /** Apple can take a few seconds to pass a change to the store service, so a refresh looks again after these. */
   // Apple takes a few seconds to pass a change on: look every 2 seconds at first, then less often, for 45 seconds.
   /** The longest watch() waits for the store's first answer before it reports what it has (the store may be offline). */
@@ -111,13 +117,24 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
     manageUrl(): string | null {
       return provider?.manageUrl?.() ?? MANAGE[os] ?? null;
     },
-    /** The store's own manage screen inside the app where there is one, else its manage page. */
-    async openManage(): Promise<void> {
+    /**
+     * The store's own manage screen inside the app where there is one, else its manage page.
+     * `onClosed` runs once, the moment the in-app screen closes (before the store is asked again), so a page can show its loader
+     * straight away instead of after the checks. It is not called when the store's web page opens instead.
+     */
+    async openManage(onClosed?: () => void): Promise<void> {
       if (ready && provider!.openManage) {
         try {
           // What the store said before the sheet opened, so the checks after it can stop once the change shows.
           const before = renewalNow();
-          if (await provider!.openManage(userId)) {
+          let told = false;
+          const closed = () => {
+            if (told) return;
+            told = true;
+            try { onClosed?.(); } catch (e) { report('payments:manage', e); }
+          };
+          if (await provider!.openManage(userId, closed)) {
+            closed(); // a provider from before 2.5.0 never calls it
             await kit.refresh(before);
             return;
           }

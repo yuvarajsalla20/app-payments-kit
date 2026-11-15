@@ -213,6 +213,37 @@ describe('createPaymentsKit', () => {
     }
   });
 
+  it('keeps checking when only the end date moves, and stops once auto-renew itself changes', async () => {
+    vi.useFakeTimers();
+    try {
+      let willRenew = false;
+      let until = '2026-12-12T10:00:00.000Z';
+      let checks = 0;
+      // The first check after the sheet brings a fresher date but the old auto-renew; Apple passes the renew on by the fourth.
+      const refresh = vi.fn(async () => { checks += 1; if (checks === 1) until = '2026-12-12T11:00:00.000Z'; if (checks === 4) willRenew = true; });
+      const p = fakeProvider({ openManage: async () => true, refresh, currentTier: async () => 'premium', renewal: () => ({ until, willRenew, productId: 'monthly' }) });
+      const kit = createPaymentsKit({ providers: { ios: p } });
+      await kit.openManage();
+      await vi.advanceTimersByTimeAsync(50_000);
+      expect(refresh).toHaveBeenCalledTimes(4); // now, 2 s, 4 s, 6 s: the date alone did not stop it
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('tells the page the moment the manage sheet closes, before the store is asked again, and only once', async () => {
+    const order: string[] = [];
+    const refresh = vi.fn(async () => { order.push('refresh'); });
+    const p = fakeProvider({ openManage: async (_id, onClosed) => { order.push('sheet'); onClosed?.(); return true; }, refresh });
+    await createPaymentsKit({ providers: { ios: p } }).openManage(() => order.push('closed'));
+    expect(order).toEqual(['sheet', 'closed', 'refresh']);
+    // A provider from before 2.5.0 never calls it: the kit does, once the sheet is gone.
+    const older: string[] = [];
+    const old = fakeProvider({ openManage: async () => { older.push('sheet'); return true; }, refresh: async () => { older.push('refresh'); } });
+    await createPaymentsKit({ providers: { ios: old } }).openManage(() => older.push('closed'));
+    expect(older).toEqual(['sheet', 'closed', 'refresh']);
+  });
+
   it('a newer refresh replaces the later checks of an older one', async () => {
     vi.useFakeTimers();
     try {

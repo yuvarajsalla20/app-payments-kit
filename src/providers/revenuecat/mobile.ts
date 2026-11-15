@@ -158,10 +158,11 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
     renewal() {
       return renewalOf(last, tierOf(last, tiers, options.entitlements), options.entitlements);
     },
-    async openManage(userId = null) {
+    async openManage(userId = null, onClosed) {
       // Apple's own sheet inside the app. Unlike the App Store page, it also lists TestFlight and sandbox subscriptions.
       if (Platform.OS !== 'ios' || !ready || !configured) return false;
       await Purchases.showManageSubscriptions();
+      onClosed?.(); // the sheet is gone: the page can say "Updating…" while the store is asked below
       // A cancel or renew in the sheet reaches RevenueCat only through Apple's server notification, which can lag or be
       // missing. Sending this phone's purchases makes RevenueCat ask Apple now, so willRenew is right at once.
       // Like buy and restore: never send this phone's purchases while the store is still on someone else.
