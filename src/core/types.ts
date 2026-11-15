@@ -51,8 +51,9 @@ export interface PaymentProvider {
   /**
    * Shows the store's own manage screen inside the app. True when it was shown; false (or a throw) falls back to `manageUrl`.
    * `userId` is the signed-in person: anything sent to the store afterwards is booked to them only.
+   * `onClosed` (2.5.0+) runs the moment the store's screen closes, before the checks that follow it, so a page can say "Updating…" at once.
    */
-  openManage?(userId?: string | null): Promise<boolean>;
+  openManage?(userId?: string | null, onClosed?: () => void): Promise<boolean>;
   /** Drops any saved copy of the store's answer, so the next currentTier() and renewal() ask the store again. */
   refresh?(): Promise<void>;
   /** A store discount for people who already subscribe (an App Store promotional offer), or null when the store has none by that id. */
