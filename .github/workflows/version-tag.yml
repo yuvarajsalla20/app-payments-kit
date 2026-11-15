@@ -1,0 +1,62 @@
+# Mandatory version tags.
+# - Pull requests into main: fails unless the version is higher than the latest
+#   v* tag. Pull requests that only touch .github/, docs or *.md files are exempt.
+# - Merges to main: creates the tag v<version> on the merged commit if it does
+#   not exist yet. Existing tags are never moved.
+name: version-tag
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+env:
+  VERSION_FILE: package.json
+jobs:
+  version-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Version must be higher than the latest tag
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./$VERSION_FILE').version")
+          latest=$(git ls-remote --tags --refs origin 'v*' | sed 's#.*refs/tags/v##' | sort -V | tail -1)
+          code=$(git diff --name-only "origin/$BASE_REF...HEAD" | grep -vE '^(\.github/|docs/)|\.md$|^LICENSE$' || true)
+          echo "Version in $VERSION_FILE: $version. Latest tag: v${latest:-none}."
+          if [ -z "$code" ]; then
+            echo "Only CI or docs files changed, so no new version is needed."
+            exit 0
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "::error file=$VERSION_FILE::Tag v$version already exists. Raise the version in $VERSION_FILE (and add a CHANGELOG entry)."
+            exit 1
+          fi
+          if [ -n "$latest" ] && [ "$(printf '%s\n%s\n' "$latest" "$version" | sort -V | tail -1)" != "$version" ]; then
+            echo "::error file=$VERSION_FILE::Version $version is lower than the latest tag v$latest."
+            exit 1
+          fi
+          echo "OK: merging this will create tag v$version."
+  tag:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create v<version> tag
+        run: |
+          set -euo pipefail
+          tag="v$(node -p "require('./$VERSION_FILE').version")"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "Tag $tag already exists; nothing to do."
+            exit 0
+          fi
+          git tag "$tag" "$GITHUB_SHA"
+          git push origin "refs/tags/$tag"
+          echo "Created tag $tag at $GITHUB_SHA." | tee -a "$GITHUB_STEP_SUMMARY"
