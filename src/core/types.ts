@@ -82,6 +82,11 @@ export interface Renewal {
   willRenew: boolean;
   /** The store product that gives the tier, such as 'hringnring_monthly'. Null when the store doesn't say. */
   productId: string | null;
+  /**
+   * True while the subscription is in its free trial (the store's intro offer), so an app can apply trial limits
+   * (2.6.0+). RevenueCat's `periodType` 'TRIAL'. Left out by providers that cannot tell.
+   */
+  trial?: boolean;
 }
 
 /** Where the server-side subscription row is read from (Supabase now, Firebase later). */

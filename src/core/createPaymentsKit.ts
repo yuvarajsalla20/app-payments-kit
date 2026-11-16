@@ -66,7 +66,7 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
    */
   const renewalNow = () => {
     const r = provider?.renewal?.() ?? null;
-    return JSON.stringify(r ? [r.willRenew, r.productId ?? null] : null);
+    return JSON.stringify(r ? [r.willRenew, r.productId ?? null, r.trial ?? false] : null);
   };
   /** Apple can take a few seconds to pass a change to the store service, so a refresh looks again after these. */
   // Apple takes a few seconds to pass a change on: look every 2 seconds at first, then less often, for 45 seconds.

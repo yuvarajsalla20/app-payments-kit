@@ -2,6 +2,10 @@
 
 Release notes for app-payments-kit, newest first. Each version is tagged in git (`v2.5.0`).
 
+## 2.6.0
+
+`renewal()` says whether the subscription is in its free trial (`trial: true` while RevenueCat's `periodType` is `TRIAL`), so an app can apply trial-only limits such as a smaller item count. The end of a trial also counts as a change for the checks after the manage sheet.
+
 ## 2.5.0
 
 `openManage(onClosed?)` calls `onClosed` the moment Apple's manage sheet closes, before the store is asked again, so a page can show its loader at once (providers get it as a second argument; an older provider's sheet still triggers it once it returns). The checks after the sheet now stop only when auto-renew or the plan changes, not when the end date alone moves, so a fresher date can no longer end them before Apple's real answer arrives.
