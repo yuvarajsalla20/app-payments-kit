@@ -130,10 +130,22 @@ describe('revenueCatMobile provider', () => {
     const premium = (willRenew: boolean) => ({ entitlements: { active: { premium: { identifier: 'premium', productIdentifier: 'hringnring_monthly', expirationDate: '2026-11-12T10:00:00Z', willRenew } } } }) as unknown as typeof store.customer;
     store.customer = premium(true);
     await p.currentTier();
-    expect(p.renewal!()).toEqual({ until: '2026-11-12T10:00:00.000Z', willRenew: true, productId: 'hringnring_monthly' });
+    expect(p.renewal!()).toEqual({ until: '2026-11-12T10:00:00.000Z', willRenew: true, productId: 'hringnring_monthly', trial: false });
     store.customer = premium(false); // cancelled: still Premium until the date, then it ends
     await p.currentTier();
-    expect(p.renewal!()).toEqual({ until: '2026-11-12T10:00:00.000Z', willRenew: false, productId: 'hringnring_monthly' });
+    expect(p.renewal!()).toEqual({ until: '2026-11-12T10:00:00.000Z', willRenew: false, productId: 'hringnring_monthly', trial: false });
+  });
+
+  it('says when the subscription is in its free trial', async () => {
+    const p = make();
+    await p.start(U1);
+    const premium = (periodType: string) => ({ entitlements: { active: { premium: { identifier: 'premium', productIdentifier: 'pal_premium_monthly', expirationDate: '2026-11-19T10:00:00Z', willRenew: true, periodType } } } }) as unknown as typeof store.customer;
+    store.customer = premium('TRIAL');
+    await p.currentTier();
+    expect(p.renewal!()?.trial).toBe(true);
+    store.customer = premium('NORMAL');
+    await p.currentTier();
+    expect(p.renewal!()?.trial).toBe(false);
   });
 
   it('leaves Android to the Play Store page', async () => {

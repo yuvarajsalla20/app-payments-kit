@@ -39,6 +39,8 @@ interface EntitlementLike {
   expirationDate?: string | Date | null;
   willRenew?: boolean;
   productIdentifier?: string | null;
+  /** 'TRIAL' during a free trial, 'INTRO' for a paid intro price, 'NORMAL' otherwise (lower case in the web SDK). */
+  periodType?: string | null;
 }
 
 /** When this tier's entitlement ends or renews, and whether it renews. Null for 'free' or when the entitlement isn't active. */
@@ -47,7 +49,7 @@ export function renewalOf(info: EntitlementsLike | null | undefined, tier: strin
   const e = info?.entitlements?.active?.[entitlements[tier] ?? tier] as EntitlementLike | undefined;
   if (!e) return null;
   const d = e.expirationDate;
-  return { until: d ? new Date(d).toISOString() : null, willRenew: e.willRenew !== false, productId: e.productIdentifier ?? null };
+  return { until: d ? new Date(d).toISOString() : null, willRenew: e.willRenew !== false, productId: e.productIdentifier ?? null, trial: String(e.periodType ?? '').toUpperCase() === 'TRIAL' };
 }
 
 /** The package in an offering for one plan: by package type first, then by identifier. */
