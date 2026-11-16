@@ -2,6 +2,13 @@
 
 Release notes for app-payments-kit, newest first. Each version is tagged in git (`v2.5.0`).
 
+## 2.6.1
+
+Nothing to change in apps.
+
+- `renewal.trial` is left out (unknown) when the store doesn't say which period it is, instead of `false`.
+- The checks after the manage sheet stop only on a change the person made (auto-renew, plan), as in 2.5.0. A trial turning paid no longer stops them early. Watchers still hear about it.
+
 ## 2.6.0
 
 `renewal()` says whether the subscription is in its free trial (`trial: true` while RevenueCat's `periodType` is `TRIAL`), so an app can apply trial-only limits such as a smaller item count. The end of a trial also counts as a change for the checks after the manage sheet.

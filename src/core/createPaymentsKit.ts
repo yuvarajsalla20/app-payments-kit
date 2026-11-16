@@ -62,11 +62,12 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
   let later: ReturnType<typeof setTimeout>[] = [];
   /**
    * What the person can change in the manage sheet (auto-renew on or off, the plan), as text, to tell when it has changed.
-   * The end date is left out: it can move on its own (a renewal, a fresher copy) and must not stop the checks before the real change shows.
+   * The end date and the trial flag are left out: they can change on their own (a renewal, a trial turning paid) and must not stop
+   * the checks before the real change shows. Watchers still hear about them, because every check tells every watcher.
    */
   const renewalNow = () => {
     const r = provider?.renewal?.() ?? null;
-    return JSON.stringify(r ? [r.willRenew, r.productId ?? null, r.trial ?? false] : null);
+    return JSON.stringify(r ? [r.willRenew, r.productId ?? null] : null);
   };
   /** Apple can take a few seconds to pass a change to the store service, so a refresh looks again after these. */
   // Apple takes a few seconds to pass a change on: look every 2 seconds at first, then less often, for 45 seconds.

@@ -49,7 +49,10 @@ export function renewalOf(info: EntitlementsLike | null | undefined, tier: strin
   const e = info?.entitlements?.active?.[entitlements[tier] ?? tier] as EntitlementLike | undefined;
   if (!e) return null;
   const d = e.expirationDate;
-  return { until: d ? new Date(d).toISOString() : null, willRenew: e.willRenew !== false, productId: e.productIdentifier ?? null, trial: String(e.periodType ?? '').toUpperCase() === 'TRIAL' };
+  const renewal: Renewal = { until: d ? new Date(d).toISOString() : null, willRenew: e.willRenew !== false, productId: e.productIdentifier ?? null };
+  // Only when the store says which period this is; an older SDK without periodType leaves `trial` out (unknown).
+  if (e.periodType) renewal.trial = String(e.periodType).toUpperCase() === 'TRIAL';
+  return renewal;
 }
 
 /** The package in an offering for one plan: by package type first, then by identifier. */

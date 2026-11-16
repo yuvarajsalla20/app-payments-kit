@@ -130,10 +130,10 @@ describe('revenueCatMobile provider', () => {
     const premium = (willRenew: boolean) => ({ entitlements: { active: { premium: { identifier: 'premium', productIdentifier: 'hringnring_monthly', expirationDate: '2026-11-12T10:00:00Z', willRenew } } } }) as unknown as typeof store.customer;
     store.customer = premium(true);
     await p.currentTier();
-    expect(p.renewal!()).toEqual({ until: '2026-11-12T10:00:00.000Z', willRenew: true, productId: 'hringnring_monthly', trial: false });
+    expect(p.renewal!()).toEqual({ until: '2026-11-12T10:00:00.000Z', willRenew: true, productId: 'hringnring_monthly' });
     store.customer = premium(false); // cancelled: still Premium until the date, then it ends
     await p.currentTier();
-    expect(p.renewal!()).toEqual({ until: '2026-11-12T10:00:00.000Z', willRenew: false, productId: 'hringnring_monthly', trial: false });
+    expect(p.renewal!()).toEqual({ until: '2026-11-12T10:00:00.000Z', willRenew: false, productId: 'hringnring_monthly' });
   });
 
   it('says when the subscription is in its free trial', async () => {
@@ -146,6 +146,10 @@ describe('revenueCatMobile provider', () => {
     store.customer = premium('NORMAL');
     await p.currentTier();
     expect(p.renewal!()?.trial).toBe(false);
+    // An SDK that doesn't say which period it is: unknown, not "no trial".
+    store.customer = premium('');
+    await p.currentTier();
+    expect(p.renewal!()).not.toHaveProperty('trial');
   });
 
   it('leaves Android to the Play Store page', async () => {
