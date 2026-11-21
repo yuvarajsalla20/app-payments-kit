@@ -19,6 +19,36 @@ describe('revenueCatMobile provider', () => {
     expect(make().ready).toBe(true);
   });
 
+  it('refuses a RevenueCat test_ key in a release build instead of letting the SDK close the app', async () => {
+    const errors: string[] = [];
+    const p = make({ iosKey: 'test_abc', onError: (where: string) => errors.push(where) });
+    expect(p.ready).toBe(false);
+    expect(errors).toEqual(['payments:test-key']);
+    await p.start(U1);
+    expect(store.configured).toEqual([]); // the SDK never sees the key
+    // In a development build the Test Store key is fine.
+    (globalThis as { __DEV__?: boolean }).__DEV__ = true;
+    try {
+      expect(make({ iosKey: 'test_abc' }).ready).toBe(true);
+    } finally {
+      delete (globalThis as { __DEV__?: boolean }).__DEV__;
+    }
+  });
+
+  it('does not set the store up on an anonymous id at a sign-out before anyone signed in', async () => {
+    const p = make();
+    await p.start(null); // the app still restoring the session, or signed out
+    expect(store.configured).toEqual([]);
+    await p.start(U1); // the real account: set up on it directly, no logIn (a network call) needed
+    expect(store.configured).toEqual([{ apiKey: 'appl_x', appUserID: U1 }]);
+    expect(store.user).toBe(U1);
+    // Signed out for good: an anonymous id is set up the moment something needs the store.
+    const q = make();
+    await q.start(null);
+    expect(await q.currentTier()).toBe('free');
+    expect(store.configured).toHaveLength(2);
+  });
+
   it('loads plans in the app order with store prices, period and trial', async () => {
     const p = make();
     await p.start(U1);
@@ -29,11 +59,29 @@ describe('revenueCatMobile provider', () => {
     ]);
   });
 
+  it('keeps the trial as the store sets it, so a 1-month trial is not called 30 days', async () => {
+    const yearly = store.packages[0]!;
+    const intro = yearly.product.introPrice;
+    yearly.product.introPrice = { price: 0, periodUnit: 'MONTH', periodNumberOfUnits: 1 };
+    try {
+      const p = make();
+      await p.start(U1);
+      const [plan] = await p.loadPlans();
+      expect(plan!.trial).toEqual({ unit: 'MONTH', count: 1 });
+    } finally {
+      yearly.product.introPrice = intro;
+    }
+    const p = make();
+    await p.start(U1);
+    expect((await p.loadPlans())[0]!.trial).toEqual({ unit: 'WEEK', count: 1 });
+  });
+
   it('hides the trial on iPhone when the person already used it', async () => {
     store.eligible = 1;
     const p = make();
     await p.start(U1);
     expect((await p.loadPlans())[0]!.trialDays).toBeNull();
+    expect((await p.loadPlans())[0]!.trial).toBeNull();
   });
 
   it('leaves out plans the offering does not have', async () => {
@@ -120,6 +168,18 @@ describe('revenueCatMobile provider', () => {
     await p.openManage!(null);
     expect(store.synced).toBe(1);
     expect(store.user?.startsWith('$RCAnonymousID:')).toBe(true);
+  });
+
+  it('says when the store could not take the renewal payment (billing issue)', async () => {
+    const p = make();
+    await p.start(U1);
+    const premium = (billingIssueDetectedAt: string | null) => ({ entitlements: { active: { premium: { identifier: 'premium', productIdentifier: 'm', expirationDate: '2026-11-12T10:00:00Z', willRenew: true, billingIssueDetectedAt } } } }) as unknown as typeof store.customer;
+    store.customer = premium('2026-11-10T10:00:00Z');
+    await p.currentTier();
+    expect(p.renewal!()).toMatchObject({ willRenew: true, billingIssue: true });
+    store.customer = premium(null);
+    await p.currentTier();
+    expect(p.renewal!()?.billingIssue).toBeUndefined();
   });
 
   it('reports when the paid tier ends and whether it renews', async () => {

@@ -41,6 +41,8 @@ interface EntitlementLike {
   productIdentifier?: string | null;
   /** 'TRIAL' during a free trial, 'INTRO' for a paid intro price, 'NORMAL' otherwise (lower case in the web SDK). */
   periodType?: string | null;
+  /** When the store last failed to take a renewal payment; null when payments are fine. */
+  billingIssueDetectedAt?: string | Date | null;
 }
 
 /** When this tier's entitlement ends or renews, and whether it renews. Null for 'free' or when the entitlement isn't active. */
@@ -52,6 +54,8 @@ export function renewalOf(info: EntitlementsLike | null | undefined, tier: strin
   const renewal: Renewal = { until: d ? new Date(d).toISOString() : null, willRenew: e.willRenew !== false, productId: e.productIdentifier ?? null };
   // Only when the store says which period this is; an older SDK without periodType leaves `trial` out (unknown).
   if (e.periodType) renewal.trial = String(e.periodType).toUpperCase() === 'TRIAL';
+  // The store couldn't take the renewal payment (an expired card): the tier lasts through the grace period only.
+  if (e.billingIssueDetectedAt) renewal.billingIssue = true;
   return renewal;
 }
 

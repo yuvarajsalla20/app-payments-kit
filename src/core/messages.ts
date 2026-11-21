@@ -21,6 +21,9 @@ export const DEFAULT_MESSAGES: PaymentMessages = {
   generic: 'The store could not finish this. Please try again in a moment.',
 };
 
-/** Days in a store period, such as WEEK × 1 = 7. */
+/**
+ * Days in a store period, such as WEEK × 1 = 7. Exact for DAY and WEEK only: a MONTH counts as 30 and a YEAR as 365, though
+ * the stores run them by the calendar. To say how long a trial is, use the period itself (`Plan.trial`), not this.
+ */
 export const periodDays = (unit: string, count: number): number =>
   count * (unit === 'WEEK' ? 7 : unit === 'MONTH' ? 30 : unit === 'YEAR' ? 365 : 1);

@@ -32,9 +32,9 @@ describe('revenueCatWeb provider', () => {
     const p = make();
     await p.start(U1);
     const plans = await p.loadPlans();
-    expect(plans.map((x) => [x.id, x.priceString, x.price, x.currency, x.period, x.trialDays])).toEqual([
-      ['yearly', '$39.99', 39.99, 'USD', { unit: 'YEAR', count: 1 }, 7],
-      ['monthly', '$6.99', 6.99, 'USD', { unit: 'MONTH', count: 1 }, null],
+    expect(plans.map((x) => [x.id, x.priceString, x.price, x.currency, x.period, x.trialDays, x.trial])).toEqual([
+      ['yearly', '$39.99', 39.99, 'USD', { unit: 'YEAR', count: 1 }, 7, { unit: 'DAY', count: 7 }],
+      ['monthly', '$6.99', 6.99, 'USD', { unit: 'MONTH', count: 1 }, null, null],
     ]);
   });
 

@@ -18,8 +18,13 @@ export interface Plan {
   currency: string;
   /** How often it charges; null for a one-off purchase. */
   period: Period | null;
-  /** Days of free trial this person can still get on this plan; null when there is none or it is used up. */
+  /**
+   * Days of free trial this person can still get on this plan; null when there is none or it is used up. A month or a year is
+   * only roughly 30 or 365 days, so show `trial` instead (2.7.0+): a 1-month trial runs one calendar month, not 30 days.
+   */
   trialDays: number | null;
+  /** The free trial as the store sets it, such as MONTH × 1 ("1-month free trial"); null when there is none or it is used up (2.7.0+). */
+  trial?: Period | null;
   /** The provider's own object, passed back to buy(). Apps should not read it. */
   native?: unknown;
 }
@@ -87,6 +92,11 @@ export interface Renewal {
    * (2.6.0+). RevenueCat's `periodType` 'TRIAL'. Left out by providers that cannot tell.
    */
   trial?: boolean;
+  /**
+   * True when the store could not take the renewal payment (an expired card) and is retrying, so an app can ask the person to
+   * update it before the tier ends (2.7.0+). RevenueCat's `billingIssueDetectedAt`. Left out when payments are fine.
+   */
+  billingIssue?: boolean;
 }
 
 /** Where the server-side subscription row is read from (Supabase now, Firebase later). */
