@@ -1,6 +1,7 @@
 // Stand-in for react-native-purchases with a fake store the tests control.
 import type { CustomerInfo } from 'react-native-purchases';
 
+export const PRORATION_MODE = { DEFERRED: 6 };
 export const LOG_LEVEL = { DEBUG: 'DEBUG', WARN: 'WARN' };
 export const PURCHASES_ERROR_CODE = {
   PURCHASE_CANCELLED_ERROR: '1',
@@ -39,6 +40,7 @@ export const store = {
   synced: 0,
   canSign: true,
   discountedBought: null as string | null,
+  lastChange: undefined as unknown,
   listeners: new Set<(i: CustomerInfo) => void>(),
   reset() {
     this.user = null;
@@ -53,6 +55,7 @@ export const store = {
     this.synced = 0;
     this.canSign = true;
     this.discountedBought = null;
+    this.lastChange = undefined;
     this.listeners.clear();
   },
 };
@@ -77,8 +80,9 @@ const Purchases = {
   getAppUserID: async () => store.user,
   getOfferings: async () => ({ current: { availablePackages: store.packages }, all: { promo: { availablePackages: store.packages.slice(1) } } }),
   checkTrialOrIntroductoryPriceEligibility: async (ids: string[]) => Object.fromEntries(ids.map((id) => [id, { status: store.eligible }])),
-  purchasePackage: async () => {
+  purchasePackage: async (_pkg: unknown, _upgrade?: unknown, change?: unknown) => {
     if (store.buyError) throw store.buyError;
+    store.lastChange = change;
     store.customer = info('premium');
     return { customerInfo: store.customer };
   },

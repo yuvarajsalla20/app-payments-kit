@@ -1,9 +1,9 @@
 import { Linking, Platform } from 'react-native';
-import Purchases, { LOG_LEVEL, PURCHASES_ERROR_CODE, type CustomerInfo, type PurchasesPackage, type PurchasesStoreProductDiscount } from 'react-native-purchases';
+import Purchases, { LOG_LEVEL, PRORATION_MODE, PURCHASES_ERROR_CODE, type CustomerInfo, type PurchasesPackage, type PurchasesStoreProductDiscount } from 'react-native-purchases';
 import { DEFAULT_MESSAGES, periodDays, type PaymentMessages } from '../../core/messages';
 import { FREE, normalizeTiers } from '../../core/tiers';
-import type { BuyResult, Offer, PaymentProvider, PeriodUnit, Plan } from '../../core/types';
-import { findPackage, parsePeriod, renewalOf, tierOf, type RevenueCatPlan } from './shared';
+import type { BilledBy, BuyResult, Offer, PaymentProvider, PeriodUnit, Plan } from '../../core/types';
+import { findPackage, paidEntitlement, parsePeriod, renewalOf, tierOf, type RevenueCatPlan } from './shared';
 
 export { parsePeriod, tierOf, type RevenueCatPlan } from './shared';
 
@@ -40,6 +40,16 @@ export function failure(e: unknown, m: PaymentMessages = DEFAULT_MESSAGES): BuyR
   if (code === PURCHASES_ERROR_CODE.PRODUCT_ALREADY_PURCHASED_ERROR) return { ok: false, cancelled: false, message: m.alreadyOwned };
   return { ok: false, cancelled: false, message: m.generic };
 }
+
+/** The store this phone buys from. */
+const thisStore = (): BilledBy | null => (Platform.OS === 'ios' ? 'app_store' : Platform.OS === 'android' ? 'google_play' : null);
+
+/** Google Play names a subscription 'product:base-plan' in RevenueCat; a plan change names the product alone. */
+const playProduct = (id: string): string => id.split(':')[0]!;
+
+/** The message for a subscription another store bills: where it is billed and where to manage it. */
+const billedElsewhere = (by: BilledBy, m: PaymentMessages): string =>
+  by === 'app_store' ? m.billedByAppStore : by === 'google_play' ? m.billedByGooglePlay : m.billedOnWeb;
 
 /** RevenueCat for the App Store and Google Play (iPhone and Android apps). For the website use `revenueCatWeb`. */
 export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvider {
@@ -156,7 +166,15 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
       if (!plan.native) return { ok: false, cancelled: false, message: m.storeUnreachable };
       if (!(await storeIsFor(userId))) return notSignedIn;
       try {
-        const { customerInfo } = await Purchases.purchasePackage(plan.native as PurchasesPackage);
+        const pkg = plan.native as PurchasesPackage;
+        // 2.9.0: a subscription another store bills is managed there; buying here would bill the person twice.
+        const held = paidEntitlement(await Purchases.getCustomerInfo().catch(() => null), tiers, options.entitlements);
+        if (held?.billedBy && held.billedBy !== 'other' && held.billedBy !== thisStore()) return { ok: false, cancelled: false, message: billedElsewhere(held.billedBy, m) };
+        // 2.9.0: on Google Play, a change of plan replaces the current subscription at its renewal (as the App Store does)
+        // instead of starting a second one next to it.
+        const old = Platform.OS === 'android' && held?.billedBy === 'google_play' && held.productId ? playProduct(held.productId) : null;
+        const change = old && old !== playProduct(pkg.product.identifier) ? { oldProductIdentifier: old, prorationMode: PRORATION_MODE.DEFERRED } : null;
+        const { customerInfo } = await Purchases.purchasePackage(pkg, null, change);
         return { ok: true, tier: tierFor(customerInfo) };
       } catch (e) {
         return failure(e, m);
@@ -195,6 +213,9 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
     async openManage(userId = null, onClosed) {
       // Apple's own sheet inside the app. Unlike the App Store page, it also lists TestFlight and sandbox subscriptions.
       if (Platform.OS !== 'ios' || !ready || !set()) return false;
+      // 2.9.0: a subscription Google Play or the website bills is not in Apple's sheet: the page opens manageUrl() instead.
+      const by = renewalOf(last, tierOf(last, tiers, options.entitlements), options.entitlements)?.billedBy;
+      if (by && by !== 'app_store' && by !== 'other') return false;
       await Purchases.showManageSubscriptions();
       onClosed?.(); // the sheet is gone: the page can say "Updating…" while the store is asked below
       // A cancel or renew in the sheet reaches RevenueCat only through Apple's server notification, which can lag or be
@@ -241,7 +262,11 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
       }
     },
     manageUrl() {
-      return Platform.OS === 'ios' ? 'https://apps.apple.com/account/subscriptions' : Platform.OS === 'android' ? 'https://play.google.com/store/account/subscriptions' : null;
+      // 2.9.0: the page of the store that bills it, so an App Store subscription seen on Android opens Apple's page.
+      const by = renewalOf(last, tierOf(last, tiers, options.entitlements), options.entitlements)?.billedBy;
+      if (by === 'app_store' || (by !== 'google_play' && Platform.OS === 'ios')) return 'https://apps.apple.com/account/subscriptions';
+      if (by === 'google_play' || Platform.OS === 'android') return 'https://play.google.com/store/account/subscriptions';
+      return null;
     },
   };
   return provider;

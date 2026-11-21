@@ -97,7 +97,15 @@ export interface Renewal {
    * update it before the tier ends (2.7.0+). RevenueCat's `billingIssueDetectedAt`. Left out when payments are fine.
    */
   billingIssue?: boolean;
+  /**
+   * Which store bills the subscription (2.9.0+), so the other phone can say where to manage it and never sells it twice:
+   * 'app_store', 'google_play', 'web' (Stripe, RevenueCat Billing, Paddle) or 'other' (a promotional grant). Left out when unknown.
+   */
+  billedBy?: BilledBy;
 }
+
+/** Which store bills a subscription (2.9.0+). */
+export type BilledBy = 'app_store' | 'google_play' | 'web' | 'other';
 
 /** Where the server-side subscription row is read from (Supabase now, Firebase later). */
 export interface SubscriptionBackend {

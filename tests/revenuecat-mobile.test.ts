@@ -246,3 +246,59 @@ describe('revenueCatMobile provider', () => {
     expect(await make().loadOffer!('monthly_stay50')).toBeNull();
   });
 });
+
+describe('2.9.0 two stores', () => {
+  const held = (storeName: string, productIdentifier: string) =>
+    ({ entitlements: { active: { premium: { identifier: 'premium', store: storeName, productIdentifier, willRenew: true, expirationDate: '2027-01-01T00:00:00Z' } } } }) as never;
+
+  it('on Google Play, a change of plan replaces the current subscription at renewal', async () => {
+    Platform.OS = 'android';
+    const p = make();
+    await p.start(U1);
+    store.customer = held('PLAY_STORE', 'gp_monthly:monthly-base');
+    const [yearly] = await p.loadPlans();
+    expect((await p.buy(yearly!, U1)).ok).toBe(true);
+    expect(store.lastChange).toEqual({ oldProductIdentifier: 'gp_monthly', prorationMode: 6 });
+  });
+
+  it('a first purchase on Google Play sends no plan change, and iPhone never does', async () => {
+    Platform.OS = 'android';
+    const p = make();
+    await p.start(U1);
+    const [yearly] = await p.loadPlans();
+    await p.buy(yearly!, U1);
+    expect(store.lastChange).toBeNull();
+    store.reset();
+    Platform.OS = 'ios';
+    const q = make();
+    await q.start(U1);
+    store.customer = held('APP_STORE', 'gp_monthly');
+    const [y2] = await q.loadPlans();
+    await q.buy(y2!, U1);
+    expect(store.lastChange).toBeNull();
+  });
+
+  it('never sells a subscription the other store already bills, and says where to manage it', async () => {
+    Platform.OS = 'android';
+    const p = make();
+    await p.start(U1);
+    store.customer = held('APP_STORE', 'gp_monthly');
+    const [yearly] = await p.loadPlans();
+    const r = await p.buy(yearly!, U1);
+    expect(r).toEqual({ ok: false, cancelled: false, message: 'Your subscription is billed through the App Store. Please manage it on your iPhone.' });
+    expect(store.lastChange).toBeUndefined(); // the store was never asked
+    await p.currentTier();
+    expect(p.renewal?.()?.billedBy).toBe('app_store');
+    expect(p.manageUrl?.()).toBe('https://apps.apple.com/account/subscriptions');
+  });
+
+  it("leaves Apple's sheet closed on iPhone for a Google Play subscription and opens Google Play's page", async () => {
+    const p = make();
+    await p.start(U1);
+    store.customer = held('PLAY_STORE', 'gp_monthly:base');
+    await p.currentTier();
+    expect(await p.openManage?.(U1)).toBe(false);
+    expect(store.manageShown).toBe(0);
+    expect(p.manageUrl?.()).toBe('https://play.google.com/store/account/subscriptions');
+  });
+});
