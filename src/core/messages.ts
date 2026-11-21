@@ -8,6 +8,12 @@ export interface PaymentMessages {
   network: string;
   alreadyOwned: string;
   generic: string;
+  /** 2.9.0: a subscription bought on iPhone, seen on another phone. */
+  billedByAppStore: string;
+  /** 2.9.0: a subscription bought on Android, seen on another phone. */
+  billedByGooglePlay: string;
+  /** 2.9.0: a subscription bought on the website, seen on a phone. */
+  billedOnWeb: string;
 }
 
 export const DEFAULT_MESSAGES: PaymentMessages = {
@@ -19,6 +25,9 @@ export const DEFAULT_MESSAGES: PaymentMessages = {
   network: 'No internet connection. Please try again.',
   alreadyOwned: 'You already have this plan. Tap Restore Purchases to turn it on here.',
   generic: 'The store could not finish this. Please try again in a moment.',
+  billedByAppStore: 'Your subscription is billed through the App Store. Please manage it on your iPhone.',
+  billedByGooglePlay: 'Your subscription is billed through Google Play. Please manage it on your Android phone.',
+  billedOnWeb: 'Your subscription is billed through the website. Please manage it there.',
 };
 
 /**

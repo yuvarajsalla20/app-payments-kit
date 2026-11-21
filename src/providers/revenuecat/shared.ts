@@ -1,7 +1,7 @@
 // Pieces the RevenueCat mobile and web providers share. Type-only imports, so the web build never pulls in
 // react-native-purchases and the phone build never pulls in @revenuecat/purchases-js.
 import { FREE, rank } from '../../core/tiers';
-import type { Period, PeriodUnit, Renewal } from '../../core/types';
+import type { BilledBy, Period, PeriodUnit, Renewal } from '../../core/types';
 
 /** One plan the app sells, matched to a RevenueCat package in the offering. The same list works on phone and web. */
 export interface RevenueCatPlan {
@@ -43,6 +43,27 @@ interface EntitlementLike {
   periodType?: string | null;
   /** When the store last failed to take a renewal payment; null when payments are fine. */
   billingIssueDetectedAt?: string | Date | null;
+  /** The store that bills it: 'APP_STORE', 'PLAY_STORE', 'STRIPE', 'RC_BILLING', 'PROMOTIONAL'... (lower case in the web SDK). */
+  store?: string | null;
+}
+
+/** RevenueCat's store name as the kit says it (2.9.0+). Undefined when RevenueCat doesn't say. */
+export function billedByOf(store: string | null | undefined): BilledBy | undefined {
+  const s = String(store ?? '').toUpperCase();
+  if (!s) return undefined;
+  if (s === 'APP_STORE' || s === 'MAC_APP_STORE') return 'app_store';
+  if (s === 'PLAY_STORE') return 'google_play';
+  if (s === 'STRIPE' || s === 'RC_BILLING' || s === 'PADDLE') return 'web';
+  return 'other';
+}
+
+/** The active entitlement of the highest paid tier, with the store that bills it and its product. Null when free. */
+export function paidEntitlement(info: EntitlementsLike | null | undefined, tiers: readonly string[], entitlements: Record<string, string> = {}): { billedBy?: BilledBy; productId: string | null } | null {
+  const tier = tierOf(info, tiers, entitlements);
+  if (tier === FREE) return null;
+  const e = info?.entitlements?.active?.[entitlements[tier] ?? tier] as EntitlementLike | undefined;
+  if (!e) return null;
+  return { billedBy: billedByOf(e.store), productId: e.productIdentifier ?? null };
 }
 
 /** When this tier's entitlement ends or renews, and whether it renews. Null for 'free' or when the entitlement isn't active. */
@@ -56,6 +77,8 @@ export function renewalOf(info: EntitlementsLike | null | undefined, tier: strin
   if (e.periodType) renewal.trial = String(e.periodType).toUpperCase() === 'TRIAL';
   // The store couldn't take the renewal payment (an expired card): the tier lasts through the grace period only.
   if (e.billingIssueDetectedAt) renewal.billingIssue = true;
+  const billedBy = billedByOf(e.store);
+  if (billedBy) renewal.billedBy = billedBy;
   return renewal;
 }
 

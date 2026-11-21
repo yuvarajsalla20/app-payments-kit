@@ -2,6 +2,14 @@
 
 Release notes for app-payments-kit, newest first. Each version is tagged in git (`v2.5.0`).
 
+## 2.9.0
+
+Nothing to change in apps. iPhone purchases work as before.
+
+- **Google Play plan changes replace the current subscription.** Moving from Monthly to Yearly on Android now replaces the current Google Play subscription at its renewal (as the App Store does), instead of starting a second one and billing twice.
+- **A subscription is never sold twice across stores.** When the App Store, Google Play or the website already bills the person, buying on the other phone is refused with one sentence that says where it is billed and where to manage it (`billedByAppStore`, `billedByGooglePlay`, `billedOnWeb` in `PaymentMessages`).
+- **Manage opens the store that bills it.** `renewal()` carries `billedBy` ('app_store', 'google_play', 'web' or 'other'); `manageUrl()` opens that store's page, and Apple's sheet is skipped for a subscription Google Play or the website bills.
+
 ## 2.8.0
 
 Nothing to change in apps.
