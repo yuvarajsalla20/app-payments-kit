@@ -45,8 +45,9 @@ export interface TierState {
   /** When the store's paid tier ends or renews, and whether it renews; null unless the tier comes from the store. */
   renewal: Renewal | null;
   /**
-   * True while the store could not be reached and the tier is this account's last known one, kept until its end date (2.7.0+).
-   * The kit keeps trying the store and reports again as soon as it answers.
+   * True while the store has not answered yet (still starting, or unreachable) and the tier is this account's last known one, kept
+   * until its end date (2.7.0+). From 2.8.0 it is reported at once on launch, before the store answers. The kit keeps asking the
+   * store and reports again as soon as it answers.
    */
   remembered?: boolean;
 }
@@ -266,8 +267,8 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
       // a paying family "free" for the moment before the server answers. Without a backend or an account there is
       // nothing to wait for.
       let settled = !options.backend || !id;
-      // Nor until the store has answered once (or failed, or STORE_WAIT_MS passed): without it a Premium account
-      // reads "free" for a moment at every launch, and an app that schedules by tier does it twice.
+      // Nor until the store has answered once (or failed, or STORE_WAIT_MS passed, or this account's remembered answer was read):
+      // without it a Premium account reads "free" for a moment at every launch.
       let storeSettled = !ready;
       const storeWait = ready ? setTimeout(() => { storeSettled = true; emit(); }, STORE_WAIT_MS) : undefined;
       /** The remembered tier while it is still paid for: its end date is ahead (or it has none, a lifetime purchase). */
@@ -276,6 +277,7 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
         const until = r.renewal?.until;
         return !until || Date.parse(until) > Date.now();
       };
+      let lastEmitted = '';
       const emit = () => {
         if (!live || !settled || !storeSettled) return;
         const t = options.tester ? testerTier : null;
@@ -285,7 +287,12 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
         const tier = highest(tiers, fromStore, fromServer, t);
         const source: TierSource = tier === FREE ? 'free' : rank(tiers, fromStore) === rank(tiers, tier) ? 'store' : rank(tiers, fromServer) === rank(tiers, tier) ? 'account' : 'tester';
         const renewal = source !== 'store' ? null : fallback ? fallback.renewal : provider?.renewal?.() ?? null;
-        cb(fallback && source === 'store' ? { tier, source, server, renewal, remembered: true } : { tier, source, server, renewal });
+        const state: TierState = fallback && source === 'store' ? { tier, source, server, renewal, remembered: true } : { tier, source, server, renewal };
+        // Before the store answers, the same state reported again (the server read, the tester switch loading) tells nothing new.
+        const text = JSON.stringify(state);
+        if (!storeKnown && text === lastEmitted) return;
+        lastEmitted = text;
+        cb(state);
       };
       /** Saves what the store just said for this account, for a launch when the store can't be reached. */
       let saved = '';
@@ -349,8 +356,16 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
       testerListeners.add(onTester);
       checkers.add(check);
       void testerLoaded.then(emit);
-      // The remembered tier is ready before the store's slow answer: STORE_WAIT_MS then reports it, not "free".
-      void loaded.then(emit);
+      // A remembered answer for this account (free, or paid and not yet ended) is reported as soon as it is read, without waiting
+      // for the store: the store's answer follows and is reported again. With none (or an ended paid one), the kit still waits for the
+      // store, up to STORE_WAIT_MS, so a paying account never reads "free" for a moment.
+      void loaded.then(() => {
+        if (live && !storeSettled && remembered && (remembered.tier === FREE || stillValid(remembered))) {
+          storeSettled = true;
+          clearTimeout(storeWait);
+        }
+        emit();
+      });
       check();
       const sub = AppState.addEventListener('change', (s) => { if (s === 'active') check(); });
       // Back online after a failed check: try the store (and the row) at once instead of waiting for the next retry.
