@@ -2,6 +2,17 @@
 
 Release notes for app-payments-kit, newest first. Each version is tagged in git (`v2.5.0`).
 
+## 2.7.0
+
+- **A paying account no longer reads as Free at a launch with no connection.** If the store can't be reached when the app opens (offline, or RevenueCat's sign-in to the account fails or hangs), `watch()` now reports the account's last known tier and its dates (`remembered: true`), until that tier's end date. Before, it reported Free for the whole session, until the app went to the background and came back. The kit keeps each account's last answer from the store in `storage` (new option; `testerStorage` is used when it isn't given), tries the store again after 2 s, 4 s, 8 s and so on up to every 2 minutes, and at once when the new `onOnline` option says the device is back online. A store start that hangs counts as failed after 15 seconds.
+- **No anonymous store id while the session is still loading.** `watch(undefined)` starts nothing and reports nothing, for an app that is still restoring who is signed in. `revenueCatMobile` no longer sets RevenueCat up on an anonymous id at a `start(null)` that comes before anyone signed in; it does so only when something needs the store. Setting it up straight on the real account needs no network, while moving from an anonymous id needs a sign-in call that fails offline.
+- **A RevenueCat `test_` key is refused in a release build.** It made the SDK show "Wrong API Key" and close the app. Now `ready` is false, so purchases read as not open, and the new `onError` option of `revenueCatMobile` (or the console) says why. Development builds still take it.
+- **Trials keep their own length.** `Plan.trial` is the trial's period as the store sets it (MONTH × 1), so the screens can say "1-month free trial". `trialDays` is unchanged; it counts a month as 30 days, so use it only for day and week trials.
+- **Payment problems from the store.** `renewal.billingIssue` is true when the store could not take the renewal payment (RevenueCat's `billingIssueDetectedAt`), so an app without a server can ask the person to update their card before the grace period ends.
+- **`refresh()` keeps reading the server row for its whole 45 seconds** after the store shows a change from the manage sheet. Before, it stopped at the store's change and read the row only once, before the webhook had updated it. The store itself is still not asked again once it shows the change.
+
+To adopt: pass `storage: AsyncStorage` (or keep `testerStorage`) and, if the app has NetInfo, `onOnline`. Pass `undefined` to `watch()` (app-subscriptions-kit 1.23.0: `userId={undefined}`) while sign-in is still loading, and don't call `stop()` then. Everything else works as before.
+
 ## 2.6.1
 
 Nothing to change in apps.
