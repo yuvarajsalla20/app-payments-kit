@@ -2,7 +2,7 @@
 
 Payments for React Native and Expo apps (iOS, Android and web). One API over the App Store, Google Play and the website; any number of tiers and plans; an optional server webhook and `subscriptions` table so the database knows who paid; and a developer-only switch to try paid features without buying.
 
-**Current version: 2.5.0** (tag `v2.5.0`)
+**Current version: 2.7.0** (tag `v2.7.0`)
 
 It has no screens. For the Plans screen, the Premium page, locks and `canUse()`, add [app-subscriptions-kit](https://github.com/yuvarajsalla20/app-subscriptions-kit) on top. For the full App Store Connect, RevenueCat and EAS setup with screenshots, follow the Subscriptions and Payments Playbook in the app's `runbooks/` folder.
 
@@ -20,14 +20,14 @@ Part of the shared kits:
 ```jsonc
 // package.json
 "dependencies": {
-  "app-payments-kit": "git+https://github.com/yuvarajsalla20/app-payments-kit.git#<full SHA of v2.5.0>"
+  "app-payments-kit": "git+https://github.com/yuvarajsalla20/app-payments-kit.git#<full SHA of v2.7.0>"
 },
 "kitVersions": {
-  "app-payments-kit": "v2.5.0"
+  "app-payments-kit": "v2.7.0"
 }
 ```
 
-Pin the full commit SHA of a release tag, and write the tag in `kitVersions`. Find a SHA with `git ls-remote https://github.com/yuvarajsalla20/app-payments-kit refs/tags/v2.5.0`.
+Pin the full commit SHA of a release tag, and write the tag in `kitVersions`. Find a SHA with `git ls-remote https://github.com/yuvarajsalla20/app-payments-kit refs/tags/v2.7.0`.
 
 **Peer dependencies** (all optional except `react-native`; install only the vendors you use):
 
@@ -79,18 +79,23 @@ export const payments = createPaymentsKit({
   // backend: supabaseBackend(supabase),               // optional server row
   tester: __DEV__,                                     // the "pretend tier" switch, never in store builds
   testerStorage: AsyncStorage,
+  storage: AsyncStorage,                               // the last known tier per account, for a launch with no connection
+  onOnline: (cb) => NetInfo.addEventListener((s) => { if (s.isConnected) cb(); }), // optional: try the store again when back online
   onError: reportError,
 });
 ```
 
-> RevenueCat `test_` keys close the app in a release build. Use the `appl_` key for preview and production builds.
+> A RevenueCat `test_` key in a release build would make the SDK close the app. `revenueCatMobile` refuses it there (2.7.0+): `ready` is false, so the Plans screen says purchases are not open, and `onError` (or the console) says why. Use the `appl_` key for preview and production builds.
 
 ```ts
 // Anywhere
 await payments.start(userId);                 // link the signed-in account (null when signed out)
 const stop = payments.watch(userId, ({ tier, source, renewal }) => setTier(tier));
+// userId: undefined while the app still restores the session (nothing starts), null once signed out
 // tier: 'free' | 'premium' …; source: store, account or tester
-// renewal: { until, willRenew, productId } from the store, so an app without a server can show "Ends Nov 12"
+// renewal: { until, willRenew, productId, trial?, billingIssue? } from the store, so an app without a server can show "Ends Nov 12"
+// When the store can't be reached at launch, the account's last known tier is reported (remembered: true) until its end date,
+// and the store is tried again (2 s, 4 s, 8 s … up to every 2 minutes, and at once when onOnline fires).
 
 const plans = await payments.loadPlans();     // [] when no provider is ready (no key, Expo Go): show "coming soon", never made-up prices
 const result = await payments.buy(plans[0]);  // { ok: true, tier } | { ok: false, cancelled, pending?, message }
@@ -109,6 +114,8 @@ On sign-out call `payments.stop()`, so the next person on the phone never buys o
 | `backend` | Optional `SubscriptionBackend`, such as `supabaseBackend(supabase)` |
 | `tester` | `true` turns on the tester switch. Pass `__DEV__` |
 | `testerStorage` | Where the tester tier is kept (AsyncStorage fits) |
+| `storage` | Where each account's last known tier is kept, for launches when the store can't be reached (AsyncStorage fits). Default: `testerStorage` |
+| `onOnline` | `(cb) => unsubscribe`: calls `cb` when the device is back online, so a failed store check is tried again at once |
 | `messages` | Reword the store messages (`DEFAULT_MESSAGES`) |
 | `onError` | `(where, error)`, for crash reporting |
 
@@ -117,8 +124,8 @@ On sign-out call `payments.stop()`, so the next person on the phone never buys o
 | Member | What it does |
 |---|---|
 | `start(userId)`, `stop()` | Link or unlink the signed-in account |
-| `watch(userId, cb)` | The account's tier, live. Waits for the store's first answer (at most 5 s) so a paid account never flashes "free". Returns an unsubscribe |
-| `loadPlans()` | Store plans with prices in the buyer's currency, and a trial only when the person can still use it |
+| `watch(userId, cb)` | The account's tier, live. Waits for the store's first answer (at most 5 s) so a paid account never flashes "free"; offline it reports the last known tier and keeps trying. `undefined` while the session is still loading. Returns an unsubscribe |
+| `loadPlans()` | Store plans with prices in the buyer's currency, and a trial only when the person can still use it (`trial`: its period as the store sets it, such as MONTH × 1) |
 | `buy(plan)`, `restore()` | Purchases, with friendly store errors |
 | `redeemCode(code?)`, `canRedeemCode` | Offer codes (not on the web) |
 | `openManage(onClosed?)` | Apple's manage sheet inside the app on iPhone; the store's page elsewhere. Then checks again until auto-renew or the plan changes |

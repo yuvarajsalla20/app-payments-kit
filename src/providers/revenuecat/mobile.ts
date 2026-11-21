@@ -21,7 +21,12 @@ export interface RevenueCatMobileOptions {
   offering?: string;
   messages?: Partial<PaymentMessages>;
   debugLogs?: boolean;
+  /** Told when the provider turns itself off (a test_ key in a release build). app-core-kit's reportError fits. */
+  onError?: (where: string, error: unknown) => void;
 }
+
+/** True in a development build (React Native sets the global `__DEV__`); a release build, or no flag at all, is not. */
+const isDevBuild = () => (globalThis as { __DEV__?: boolean }).__DEV__ === true;
 
 
 /** Turns a store error into a result the app can show. */
@@ -41,7 +46,15 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
   const tiers = normalizeTiers(options.tiers);
   const m: PaymentMessages = { ...DEFAULT_MESSAGES, ...options.messages };
   const key = (Platform.OS === 'ios' ? options.iosKey : Platform.OS === 'android' ? options.androidKey : '') ?? '';
-  const ready = Platform.OS !== 'web' && key.length > 0;
+  // A RevenueCat Test Store key (test_…) in a release build makes the SDK show "Wrong API Key" and close the app.
+  // Refuse it here instead: purchases read as not open, and the app keeps running.
+  const testKeyInRelease = key.startsWith('test_') && !isDevBuild();
+  if (testKeyInRelease) {
+    const e = new Error('app-payments-kit: a RevenueCat test_ key cannot be used in a release build. Purchases are turned off. Use the appl_ / goog_ key for this build.');
+    if (options.onError) options.onError('payments:test-key', e);
+    else console.error(e.message);
+  }
+  const ready = Platform.OS !== 'web' && key.length > 0 && !testKeyInRelease;
   // The last customer info seen, so renewal() can say when the tier ends without another store call.
   let last: CustomerInfo | null = null;
   const tierFor = (info: CustomerInfo | null | undefined) => {
@@ -50,6 +63,8 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
   };
 
   let configured = false;
+  /** start(null) came before any account: the store is set up on an anonymous id only when something needs it. */
+  let anonymousWanted = false;
   /** How RevenueCat names an id it made up for a phone with nobody signed in. */
   const ANONYMOUS = '$RCAnonymousID:';
   let current: string | null = null;
@@ -73,6 +88,17 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
     }
   }
   const notSignedIn: BuyResult = { ok: false, cancelled: false, message: m.notSignedIn };
+  function configure(userId: string | null) {
+    if (options.debugLogs) Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+    Purchases.configure({ apiKey: key, appUserID: userId ?? undefined });
+    configured = true;
+    current = userId;
+  }
+  /** True once the store is set up; sets it up on an anonymous id when start(null) asked for that and something needs it now. */
+  const set = (): boolean => {
+    if (!configured && ready && anonymousWanted) configure(null);
+    return configured;
+  };
 
   const provider: PaymentProvider = {
     name: 'revenuecat-mobile',
@@ -80,10 +106,13 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
     async start(userId) {
       if (!ready) return;
       if (!configured) {
-        if (options.debugLogs) Purchases.setLogLevel(LOG_LEVEL.DEBUG);
-        Purchases.configure({ apiKey: key, appUserID: userId ?? undefined });
-        configured = true;
-        current = userId;
+        // Signed out before anyone has signed in (or while the app still restores the session): don't set the store up on an
+        // anonymous id yet. Setting it up on the real id later needs no network; moving from an anonymous id needs logIn.
+        if (!userId) {
+          anonymousWanted = true;
+          return;
+        }
+        configure(userId);
         return;
       }
       // On failure this throws and `current` stays as it was, so the next start() tries again.
@@ -92,7 +121,7 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
       current = userId;
     },
     async loadPlans() {
-      if (!ready || !configured) return [];
+      if (!ready || !set()) return [];
       const all = await Purchases.getOfferings();
       const offering = options.offering ? all.all[options.offering] : all.current;
       if (!offering) return [];
@@ -108,6 +137,7 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
       return found.map(({ p, pkg }): Plan => {
         const intro = pkg.product.introPrice;
         const canTrial = Platform.OS !== 'ios' || eligible[pkg.product.identifier]?.status === Purchases.INTRO_ELIGIBILITY_STATUS.INTRO_ELIGIBILITY_STATUS_ELIGIBLE;
+        const trial = intro && intro.price === 0 && canTrial ? { unit: intro.periodUnit as PeriodUnit, count: intro.periodNumberOfUnits } : null;
         return {
           id: p.id,
           tier: p.tier,
@@ -115,13 +145,14 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
           price: pkg.product.price,
           currency: pkg.product.currencyCode,
           period: parsePeriod(pkg.product.subscriptionPeriod),
-          trialDays: intro && intro.price === 0 && canTrial ? periodDays(intro.periodUnit, intro.periodNumberOfUnits) : null,
+          trialDays: trial ? periodDays(trial.unit, trial.count) : null,
+          trial,
           native: pkg,
         };
       });
     },
     async buy(plan, userId) {
-      if (!ready || !configured) return { ok: false, cancelled: false, message: m.notReady };
+      if (!ready || !set()) return { ok: false, cancelled: false, message: m.notReady };
       if (!plan.native) return { ok: false, cancelled: false, message: m.storeUnreachable };
       if (!(await storeIsFor(userId))) return notSignedIn;
       try {
@@ -132,7 +163,7 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
       }
     },
     async restore(userId) {
-      if (!ready || !configured) return { ok: false, cancelled: false, message: m.notReady };
+      if (!ready || !set()) return { ok: false, cancelled: false, message: m.notReady };
       if (!(await storeIsFor(userId))) return notSignedIn;
       try {
         return { ok: true, tier: tierFor(await Purchases.restorePurchases()) };
@@ -141,18 +172,21 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
       }
     },
     async currentTier() {
-      if (!ready || !configured) return FREE;
+      if (!ready || !set()) return FREE;
       return tierFor(await Purchases.getCustomerInfo());
     },
     onTierChange(cb) {
-      if (!ready || !configured) return () => undefined;
+      if (!ready || !set()) return () => undefined;
       const listener = (info: CustomerInfo) => cb(tierFor(info));
       Purchases.addCustomerInfoUpdateListener(listener);
       return () => { Purchases.removeCustomerInfoUpdateListener(listener); };
     },
     async redeemCode(code) {
       // Apple shows its own code sheet; Google Play redeems codes in the Play Store.
-      if (Platform.OS === 'ios') return Purchases.presentCodeRedemptionSheet();
+      if (Platform.OS === 'ios') {
+        if (!ready || !set()) return;
+        return Purchases.presentCodeRedemptionSheet();
+      }
       await Linking.openURL(`https://play.google.com/redeem?code=${encodeURIComponent(code.trim())}`);
     },
     renewal() {
@@ -160,7 +194,7 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
     },
     async openManage(userId = null, onClosed) {
       // Apple's own sheet inside the app. Unlike the App Store page, it also lists TestFlight and sandbox subscriptions.
-      if (Platform.OS !== 'ios' || !ready || !configured) return false;
+      if (Platform.OS !== 'ios' || !ready || !set()) return false;
       await Purchases.showManageSubscriptions();
       onClosed?.(); // the sheet is gone: the page can say "Updating…" while the store is asked below
       // A cancel or renew in the sheet reaches RevenueCat only through Apple's server notification, which can lag or be
@@ -175,13 +209,13 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
       return true;
     },
     async refresh() {
-      if (!ready || !configured) return;
+      if (!ready || !set()) return;
       await Purchases.invalidateCustomerInfoCache();
       tierFor(await Purchases.getCustomerInfo());
     },
     async loadOffer(offerId) {
       // Promotional offers are App Store only; Google Play has no matching kind.
-      if (Platform.OS !== 'ios' || !ready || !configured) return null;
+      if (Platform.OS !== 'ios' || !ready || !set()) return null;
       for (const plan of await provider.loadPlans()) {
         const pkg = plan.native as PurchasesPackage | undefined;
         const d = pkg?.product.discounts?.find((x: PurchasesStoreProductDiscount) => x.identifier === offerId);
@@ -192,7 +226,7 @@ export function revenueCatMobile(options: RevenueCatMobileOptions): PaymentProvi
       return null;
     },
     async buyOffer(offer: Offer, userId) {
-      if (!ready || !configured) return { ok: false, cancelled: false, message: m.notReady };
+      if (!ready || !set()) return { ok: false, cancelled: false, message: m.notReady };
       const pkg = offer.plan.native as PurchasesPackage | undefined;
       if (!pkg || !offer.native) return { ok: false, cancelled: false, message: m.storeUnreachable };
       if (!(await storeIsFor(userId))) return notSignedIn;

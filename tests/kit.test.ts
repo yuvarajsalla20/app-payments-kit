@@ -213,6 +213,28 @@ describe('createPaymentsKit', () => {
     }
   });
 
+  it("keeps reading the server row for the whole window after the store shows the change (the webhook lands later)", async () => {
+    vi.useFakeTimers();
+    try {
+      let willRenew = true;
+      let checks = 0;
+      const refresh = vi.fn(async () => { checks += 1; if (checks === 1) willRenew = false; });
+      const read = vi.fn(async () => null);
+      const p = fakeProvider({ openManage: async () => true, refresh, currentTier: async () => 'premium', renewal: () => ({ until: '2026-12-12T10:00:00.000Z', willRenew, productId: 'monthly' }) });
+      const kit = createPaymentsKit({ providers: { ios: p }, backend: { read } });
+      const stop = kit.watch('u1', () => undefined);
+      await vi.advanceTimersByTimeAsync(0);
+      read.mockClear();
+      await kit.openManage();
+      await vi.advanceTimersByTimeAsync(50_000);
+      expect(refresh).toHaveBeenCalledTimes(1); // the store changed at the first look: not asked again
+      expect(read).toHaveBeenCalledTimes(11); // the row: right away, then at every later check
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps checking when only the end date moves, and stops once auto-renew itself changes', async () => {
     vi.useFakeTimers();
     try {
@@ -306,5 +328,155 @@ describe('watch waits for the store', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('watch keeps a paying account paid when the store cannot be reached', () => {
+  const memory = () => {
+    const saved: Record<string, string> = {};
+    return { saved, getItem: async (k: string) => saved[k] ?? null, setItem: async (k: string, v: string) => void (saved[k] = v) };
+  };
+  const ahead = new Date(Date.now() + 20 * 86_400_000).toISOString();
+
+  it('reports the last known tier when start fails for the account (offline sign-in), then the store once it answers', async () => {
+    vi.useFakeTimers();
+    try {
+      const storage = memory();
+      const renewal = { until: ahead, willRenew: true, productId: 'monthly' };
+      // Last launch: the store said Premium.
+      const first = createPaymentsKit({ providers: { ios: fakeProvider({ currentTier: async () => 'premium', renewal: () => renewal }) }, storage });
+      const stopFirst = first.watch('uid-1', () => undefined);
+      await vi.advanceTimersByTimeAsync(0);
+      stopFirst();
+      // This launch: offline, the store can't move to the account.
+      let offline = true;
+      const start = vi.fn(async (id: string | null) => { if (id && offline) throw new Error('NETWORK_ERROR'); });
+      const kit = createPaymentsKit({ providers: { ios: fakeProvider({ start, currentTier: async () => 'premium', renewal: () => renewal }) }, storage });
+      const seen: TierState[] = [];
+      const stop = kit.watch('uid-1', (s) => seen.push(s));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(seen.at(-1)).toMatchObject({ tier: 'premium', source: 'store', renewal, remembered: true });
+      expect(seen.some((s) => s.tier === 'free')).toBe(false);
+      // It tries again by itself, with no trip to the background.
+      offline = false;
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(start).toHaveBeenCalledTimes(2);
+      expect(seen.at(-1)).toMatchObject({ tier: 'premium', source: 'store' });
+      expect(seen.at(-1)?.remembered).toBeUndefined();
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports the last known tier when the store start hangs past the wait', async () => {
+    vi.useFakeTimers();
+    try {
+      const storage = memory();
+      storage.saved['payments-kit:last-tier:uid-1'] = JSON.stringify({ tier: 'premium', renewal: { until: ahead, willRenew: true, productId: 'monthly' } });
+      const kit = createPaymentsKit({ providers: { ios: fakeProvider({ start: () => new Promise<void>(() => undefined) }) }, storage });
+      const seen: TierState[] = [];
+      const stop = kit.watch('uid-1', (s) => seen.push(s));
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(seen.map((s) => s.tier)).toEqual(['premium']);
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lets the remembered tier go once its end date has passed, and never lends it to another account', async () => {
+    const storage = memory();
+    storage.saved['payments-kit:last-tier:uid-1'] = JSON.stringify({ tier: 'premium', renewal: { until: new Date(Date.now() - 1000).toISOString(), willRenew: true, productId: 'm' } });
+    storage.saved['payments-kit:last-tier:uid-2'] = JSON.stringify({ tier: 'premium', renewal: { until: ahead, willRenew: true, productId: 'm' } });
+    const start = async (id: string | null) => { if (id) throw new Error('offline'); };
+    const kit = createPaymentsKit({ providers: { ios: fakeProvider({ start, currentTier: async () => 'premium' }) }, storage });
+    const seen: TierState[] = [];
+    const stop = kit.watch('uid-1', (s) => seen.push(s));
+    await flush(); await flush();
+    expect(seen.at(-1)?.tier).toBe('free');
+    stop();
+    const other: TierState[] = [];
+    const stop3 = kit.watch('uid-3', (s) => other.push(s));
+    await flush(); await flush();
+    expect(other.at(-1)?.tier).toBe('free');
+    stop3();
+  });
+
+  it('forgets Premium once the store itself says free', async () => {
+    const storage = memory();
+    let tier = 'premium';
+    const kit = createPaymentsKit({ providers: { ios: fakeProvider({ currentTier: async () => tier, renewal: () => ({ until: ahead, willRenew: true, productId: 'm' }) }) }, storage });
+    let stop = kit.watch('uid-1', () => undefined);
+    await flush(); await flush();
+    stop();
+    expect(JSON.parse(storage.saved['payments-kit:last-tier:uid-1']!).tier).toBe('premium');
+    tier = 'free';
+    stop = kit.watch('uid-1', () => undefined);
+    await flush(); await flush();
+    stop();
+    expect(JSON.parse(storage.saved['payments-kit:last-tier:uid-1']!).tier).toBe('free');
+  });
+
+  it('tries the store again at once when the device is back online, and backs off between tries', async () => {
+    vi.useFakeTimers();
+    try {
+      let online: () => void = () => undefined;
+      const unlisten = vi.fn();
+      const onOnline = vi.fn((cb: () => void) => { online = cb; return unlisten; });
+      let offline = true;
+      const start = vi.fn(async (id: string | null) => { if (id && offline) throw new Error('offline'); });
+      const kit = createPaymentsKit({ providers: { ios: fakeProvider({ start, currentTier: async () => 'premium' }) }, onOnline });
+      const seen: TierState[] = [];
+      const stop = kit.watch('uid-1', (s) => seen.push(s));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(seen.at(-1)?.tier).toBe('free'); // nothing remembered on this phone yet
+      await vi.advanceTimersByTimeAsync(2000); // 1st retry
+      await vi.advanceTimersByTimeAsync(3999); // 2nd retry is 4 s after the 1st
+      expect(start).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(start).toHaveBeenCalledTimes(3);
+      offline = false;
+      online();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(start).toHaveBeenCalledTimes(4);
+      expect(seen.at(-1)).toMatchObject({ tier: 'premium', source: 'store' });
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(start).toHaveBeenCalledTimes(4); // no more retries once it answered
+      expect(unlisten).not.toHaveBeenCalled();
+      stop();
+      expect(onOnline).toHaveBeenCalledOnce();
+      expect(unlisten).toHaveBeenCalledOnce(); // stop() removes the online listener
+      online(); // a late call after stop() starts nothing
+      await vi.advanceTimersByTimeAsync(0);
+      expect(start).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never saves a store answer that arrives after the watch stopped under that account's key", async () => {
+    const storage = memory();
+    let answer!: (t: string) => void;
+    const currentTier = () => new Promise<string>((r) => { answer = r; });
+    const kit = createPaymentsKit({ providers: { ios: fakeProvider({ currentTier, renewal: () => ({ until: ahead, willRenew: true, productId: 'm' }) }) }, storage });
+    const seen: TierState[] = [];
+    const stop = kit.watch('uid-1', (s) => seen.push(s));
+    await flush();
+    stop(); // signed out while the store was answering; the next account's answer comes back
+    answer('premium');
+    await flush(); await flush();
+    expect(storage.saved['payments-kit:last-tier:uid-1']).toBeUndefined();
+    expect(seen).toEqual([]);
+  });
+
+  it('starts nothing and reports nothing while the app still restores the session (undefined)', async () => {
+    const p = fakeProvider({ currentTier: async () => 'premium' });
+    const kit = createPaymentsKit({ providers: { ios: p } });
+    const seen: TierState[] = [];
+    kit.watch(undefined, (s) => seen.push(s))();
+    await flush();
+    expect(p.start).not.toHaveBeenCalled();
+    expect(seen).toEqual([]);
   });
 });

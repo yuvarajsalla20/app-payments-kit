@@ -46,6 +46,7 @@ export function webPlan(p: RevenueCatPlan, pkg: Package): Plan {
     currency: product.currentPrice.currency,
     period: parsePeriod(product.normalPeriodDuration),
     trialDays: trial ? periodDays(trial.unit, trial.count) : null,
+    trial,
     native: pkg,
   };
 }

@@ -22,6 +22,17 @@ export interface PaymentsKitOptions {
   messages?: Partial<PaymentMessages>;
   /** Called with errors the kit swallows (app-core-kit's reportError fits). */
   onError?: (where: string, error: unknown) => void;
+  /**
+   * Keeps each account's last tier from the store (and its end date), so a paying account still reads as paid when the store
+   * can't be reached at launch (offline, a slow sign-in). AsyncStorage fits. Default: `testerStorage`, when given.
+   */
+  storage?: TesterStorage;
+  /**
+   * Calls back when the device is online again, so a store check that failed is tried at once (it is also retried on its own,
+   * less and less often). Returns a function that stops listening. With NetInfo:
+   * `(cb) => NetInfo.addEventListener((s) => { if (s.isConnected) cb(); })`.
+   */
+  onOnline?: (cb: () => void) => () => void;
 }
 
 /** Where the current tier came from, for support screens and the Settings row. */
@@ -33,9 +44,25 @@ export interface TierState {
   server: ServerSubscription | null;
   /** When the store's paid tier ends or renews, and whether it renews; null unless the tier comes from the store. */
   renewal: Renewal | null;
+  /**
+   * True while the store could not be reached and the tier is this account's last known one, kept until its end date (2.7.0+).
+   * The kit keeps trying the store and reports again as soon as it answers.
+   */
+  remembered?: boolean;
+}
+
+/** One account's last answer from the store, kept between launches. */
+interface Remembered {
+  tier: string;
+  renewal: Renewal | null;
 }
 
 const TESTER_KEY = 'payments-kit:tester-tier';
+const LAST_KEY = (id: string) => `payments-kit:last-tier:${id}`;
+/** How long a store start may take before the kit counts it as failed and tries again later (RevenueCat's logIn can hang offline). */
+export const STORE_START_TIMEOUT_MS = 15_000;
+/** After a failed store check: try again after 2 s, then twice as long each time, up to every 2 minutes. */
+export const STORE_RETRY_MS = (attempt: number) => Math.min(2000 * 2 ** attempt, 120_000);
 const MANAGE: Record<string, string> = {
   ios: 'https://apps.apple.com/account/subscriptions',
   android: 'https://play.google.com/store/account/subscriptions',
@@ -48,6 +75,7 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
   const messages: PaymentMessages = { ...DEFAULT_MESSAGES, ...options.messages };
   const report = (where: string, e: unknown) => options.onError?.(where, e);
   const ready = !!provider?.ready;
+  const storage = options.storage ?? options.testerStorage;
 
   let userId: string | null = null;
   let testerTier: string | null = null;
@@ -150,26 +178,34 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
     /**
      * Asks the store again now (not its saved copy) and tells every watcher, then a few more times over the next 45 seconds. The in-app
      * manage sheet never sends the app to the background, so without this a cancel or renew there shows only minutes later.
-     * With `before` (the store's renewal before a change), the later checks stop as soon as the store shows something else.
+     * With `before` (the store's renewal before a change), the store is not asked again once it shows something else; with a
+     * backend, the server row is still read for the whole 45 seconds, since the webhook lands after the store has changed.
      */
     async refresh(before?: string): Promise<void> {
       const stop = () => {
         later.forEach(clearTimeout);
         later = [];
       };
+      // Once the store shows the change, it is no longer asked again. The server row still is, for the whole window: the
+      // webhook that updates it usually lands after the store has changed, and a row read once, too early, would stay stale.
+      let storeDone = false;
+      const changed = () => before !== undefined && renewalNow() !== before;
       const once = async () => {
         try {
-          if (ready) await provider!.refresh?.();
+          if (ready && !storeDone) await provider!.refresh?.();
         } catch (e) {
           report('payments:refresh', e);
         }
         checkers.forEach((c) => c());
-        if (before !== undefined && renewalNow() !== before) stop();
+        if (!storeDone && changed()) {
+          storeDone = true;
+          if (!options.backend) stop();
+        }
       };
       // A newer refresh replaces the later checks of an older one, so repeated calls don't pile up.
       stop();
       await once();
-      if (before !== undefined && renewalNow() !== before) return;
+      if (storeDone && !options.backend) return;
       later = LATER_MS.map((ms) => setTimeout(() => void once(), ms));
     },
 
@@ -212,11 +248,20 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
      * Follows the tier for this account: the store, the server row and the tester switch, whichever is highest.
      * Checks again whenever the app comes back to the front. Returns a function that stops watching.
      */
-    watch(id: string | null, cb: (state: TierState) => void): () => void {
+    watch(id: string | null | undefined, cb: (state: TierState) => void): () => void {
+      // undefined: the app is still restoring the session. Nothing is started and nothing reported until it knows who it is,
+      // so the store is never set up on an anonymous id only to need a network call to move to the real account.
+      if (id === undefined) return () => undefined;
       let live = true;
       let store = FREE;
+      /** True once the store has answered in this watch; until then the account's remembered tier stands in for it. */
+      let storeKnown = false;
+      let remembered: Remembered | null = null;
       let server: ServerSubscription | null = null;
       let stopStore = () => undefined as void;
+      let retry: ReturnType<typeof setTimeout> | undefined;
+      let attempt = 0;
+      let failing = false;
       // Nothing is reported until the account's row has been read once (or the read failed), so an app never shows
       // a paying family "free" for the moment before the server answers. Without a backend or an account there is
       // nothing to wait for.
@@ -225,29 +270,78 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
       // reads "free" for a moment at every launch, and an app that schedules by tier does it twice.
       let storeSettled = !ready;
       const storeWait = ready ? setTimeout(() => { storeSettled = true; emit(); }, STORE_WAIT_MS) : undefined;
+      /** The remembered tier while it is still paid for: its end date is ahead (or it has none, a lifetime purchase). */
+      const stillValid = (r: Remembered | null): r is Remembered => {
+        if (!r || r.tier === FREE || !tiers.includes(r.tier)) return false;
+        const until = r.renewal?.until;
+        return !until || Date.parse(until) > Date.now();
+      };
       const emit = () => {
         if (!live || !settled || !storeSettled) return;
         const t = options.tester ? testerTier : null;
         const fromServer = serverTier(server);
-        const tier = highest(tiers, store, fromServer, t);
-        const source: TierSource = tier === FREE ? 'free' : rank(tiers, store) === rank(tiers, tier) ? 'store' : rank(tiers, fromServer) === rank(tiers, tier) ? 'account' : 'tester';
-        const renewal = source === 'store' ? provider?.renewal?.() ?? null : null;
-        cb({ tier, source, server, renewal });
+        const fallback = !storeKnown && stillValid(remembered) ? remembered : null;
+        const fromStore = storeKnown ? store : fallback ? fallback.tier : FREE;
+        const tier = highest(tiers, fromStore, fromServer, t);
+        const source: TierSource = tier === FREE ? 'free' : rank(tiers, fromStore) === rank(tiers, tier) ? 'store' : rank(tiers, fromServer) === rank(tiers, tier) ? 'account' : 'tester';
+        const renewal = source !== 'store' ? null : fallback ? fallback.renewal : provider?.renewal?.() ?? null;
+        cb(fallback && source === 'store' ? { tier, source, server, renewal, remembered: true } : { tier, source, server, renewal });
+      };
+      /** Saves what the store just said for this account, for a launch when the store can't be reached. */
+      let saved = '';
+      const remember = (t: string) => {
+        if (!id || !storage) return;
+        const r: Remembered = { tier: t, renewal: t === FREE ? null : provider?.renewal?.() ?? null };
+        const text = JSON.stringify(r);
+        if (text === saved) return; // the store repeats itself on every return to the app
+        saved = text;
+        storage.setItem(LAST_KEY(id), text).catch((e) => report('payments:remember', e));
+      };
+      const loaded: Promise<void> = id && storage && ready
+        ? storage.getItem(LAST_KEY(id)).then((raw) => {
+            const v = raw ? (JSON.parse(raw) as Partial<Remembered>) : null;
+            if (v && typeof v.tier === 'string') remembered = { tier: v.tier, renewal: v.renewal && typeof v.renewal === 'object' ? v.renewal : null };
+          }).catch((e) => report('payments:remember', e))
+        : Promise.resolve();
+      const heard = (t: string) => {
+        store = t;
+        storeKnown = true;
+        remember(t);
       };
       const checkServer = () => kit.readServer(id).then((row) => { server = row; }).catch((e) => report('payments:server', e)).finally(() => { settled = true; emit(); });
       const checkStore = async () => {
         if (!ready) return;
+        clearTimeout(retry);
+        retry = undefined;
+        let ok = false;
         try {
-          await kit.start(id);
+          // A start that hangs (RevenueCat's logIn offline) counts as failed after a while, so the kit can try again.
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const timedOut = new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error('store start timed out')), STORE_START_TIMEOUT_MS); });
+          try {
+            await Promise.race([kit.start(id), timedOut]);
+          } finally {
+            clearTimeout(timer);
+          }
           if (!live) return;
           stopStore();
-          stopStore = provider!.onTierChange((t) => { store = t; emit(); });
-          store = await provider!.currentTier();
+          stopStore = provider!.onTierChange((t) => { heard(t); emit(); });
+          const t = await provider!.currentTier();
+          // Stopped while the store answered (a sign-out, then someone else): the answer may be the next account's, so it is
+          // neither reported nor saved under this one.
+          if (!live) return;
+          heard(t);
+          ok = true;
         } catch (e) {
           report('payments:store', e);
         }
+        if (!live) return;
+        await loaded;
         storeSettled = true;
         clearTimeout(storeWait);
+        failing = !ok;
+        if (ok) attempt = 0;
+        else retry = setTimeout(() => void checkStore(), STORE_RETRY_MS(attempt++));
         emit();
       };
       const check = () => { void checkServer(); void checkStore(); };
@@ -255,9 +349,13 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
       testerListeners.add(onTester);
       checkers.add(check);
       void testerLoaded.then(emit);
+      // The remembered tier is ready before the store's slow answer: STORE_WAIT_MS then reports it, not "free".
+      void loaded.then(emit);
       check();
       const sub = AppState.addEventListener('change', (s) => { if (s === 'active') check(); });
-      return () => { live = false; clearTimeout(storeWait); stopStore(); sub.remove(); testerListeners.delete(onTester); checkers.delete(check); };
+      // Back online after a failed check: try the store (and the row) at once instead of waiting for the next retry.
+      const offOnline = options.onOnline?.(() => { if (live && failing) check(); }) ?? (() => undefined);
+      return () => { live = false; clearTimeout(storeWait); clearTimeout(retry); stopStore(); sub.remove(); offOnline(); testerListeners.delete(onTester); checkers.delete(check); };
     },
   };
   return kit;
