@@ -326,7 +326,11 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
           if (!live) return;
           stopStore();
           stopStore = provider!.onTierChange((t) => { heard(t); emit(); });
-          heard(await provider!.currentTier());
+          const t = await provider!.currentTier();
+          // Stopped while the store answered (a sign-out, then someone else): the answer may be the next account's, so it is
+          // neither reported nor saved under this one.
+          if (!live) return;
+          heard(t);
           ok = true;
         } catch (e) {
           report('payments:store', e);

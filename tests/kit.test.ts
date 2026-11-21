@@ -422,7 +422,8 @@ describe('watch keeps a paying account paid when the store cannot be reached', (
     vi.useFakeTimers();
     try {
       let online: () => void = () => undefined;
-      const onOnline = vi.fn((cb: () => void) => { online = cb; return () => { online = () => undefined; }; });
+      const unlisten = vi.fn();
+      const onOnline = vi.fn((cb: () => void) => { online = cb; return unlisten; });
       let offline = true;
       const start = vi.fn(async (id: string | null) => { if (id && offline) throw new Error('offline'); });
       const kit = createPaymentsKit({ providers: { ios: fakeProvider({ start, currentTier: async () => 'premium' }) }, onOnline });
@@ -442,11 +443,31 @@ describe('watch keeps a paying account paid when the store cannot be reached', (
       expect(seen.at(-1)).toMatchObject({ tier: 'premium', source: 'store' });
       await vi.advanceTimersByTimeAsync(600_000);
       expect(start).toHaveBeenCalledTimes(4); // no more retries once it answered
+      expect(unlisten).not.toHaveBeenCalled();
       stop();
-      expect(online).not.toBe(undefined);
+      expect(onOnline).toHaveBeenCalledOnce();
+      expect(unlisten).toHaveBeenCalledOnce(); // stop() removes the online listener
+      online(); // a late call after stop() starts nothing
+      await vi.advanceTimersByTimeAsync(0);
+      expect(start).toHaveBeenCalledTimes(4);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("never saves a store answer that arrives after the watch stopped under that account's key", async () => {
+    const storage = memory();
+    let answer!: (t: string) => void;
+    const currentTier = () => new Promise<string>((r) => { answer = r; });
+    const kit = createPaymentsKit({ providers: { ios: fakeProvider({ currentTier, renewal: () => ({ until: ahead, willRenew: true, productId: 'm' }) }) }, storage });
+    const seen: TierState[] = [];
+    const stop = kit.watch('uid-1', (s) => seen.push(s));
+    await flush();
+    stop(); // signed out while the store was answering; the next account's answer comes back
+    answer('premium');
+    await flush(); await flush();
+    expect(storage.saved['payments-kit:last-tier:uid-1']).toBeUndefined();
+    expect(seen).toEqual([]);
   });
 
   it('starts nothing and reports nothing while the app still restores the session (undefined)', async () => {
