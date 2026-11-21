@@ -2,6 +2,14 @@
 
 Release notes for app-payments-kit, newest first. Each version is tagged in git (`v2.5.0`).
 
+## 2.8.0
+
+Nothing to change in apps.
+
+- **Faster first answer at launch.** When this phone remembers the account's tier from the store (free, or paid and not yet ended), `watch()` reports it as soon as it is read, a few milliseconds after the call, with `remembered: true` on a paid tier. Before, it held it back until the store answered or 5 seconds had passed. The store's answer follows and is reported again. With nothing remembered, or a paid tier whose end date has passed, it still waits for the store (up to 5 seconds) as before, and it still waits for the account row when there is a backend.
+- Before the store answers, the same state is not reported twice.
+- Wording: "Tap Restore Purchases to turn it on here." names the button in Title Case.
+
 ## 2.7.0
 
 - **A paying account no longer reads as Free at a launch with no connection.** If the store can't be reached when the app opens (offline, or RevenueCat's sign-in to the account fails or hangs), `watch()` now reports the account's last known tier and its dates (`remembered: true`), until that tier's end date. Before, it reported Free for the whole session, until the app went to the background and came back. The kit keeps each account's last answer from the store in `storage` (new option; `testerStorage` is used when it isn't given), tries the store again after 2 s, 4 s, 8 s and so on up to every 2 minutes, and at once when the new `onOnline` option says the device is back online. A store start that hangs counts as failed after 15 seconds.

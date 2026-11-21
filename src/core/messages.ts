@@ -17,7 +17,7 @@ export const DEFAULT_MESSAGES: PaymentMessages = {
   pending: 'The payment is waiting for approval. Your plan turns on as soon as it goes through.',
   notAllowed: 'Purchases are turned off on this device (for example by Screen Time or Family Link).',
   network: 'No internet connection. Please try again.',
-  alreadyOwned: 'You already have this plan. Tap Restore purchases to turn it on here.',
+  alreadyOwned: 'You already have this plan. Tap Restore Purchases to turn it on here.',
   generic: 'The store could not finish this. Please try again in a moment.',
 };
 

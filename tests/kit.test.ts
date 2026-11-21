@@ -480,3 +480,82 @@ describe('watch keeps a paying account paid when the store cannot be reached', (
     expect(seen).toEqual([]);
   });
 });
+
+describe('watch reports the remembered tier at once', () => {
+  const ahead = new Date(Date.now() + 20 * 86_400_000).toISOString();
+  const storageWith = (record?: object) => {
+    const saved: Record<string, string> = record ? { 'payments-kit:last-tier:uid-1': JSON.stringify(record) } : {};
+    return { saved, getItem: async (k: string) => saved[k] ?? null, setItem: async (k: string, v: string) => void (saved[k] = v) };
+  };
+  /** A store that answers only when the test says so. */
+  const heldStore = (tier: string) => {
+    let release!: () => void;
+    const slow = new Promise<void>((r) => { release = r; });
+    return { release, provider: fakeProvider({ start: vi.fn(async () => { await slow; }), currentTier: async () => tier }) };
+  };
+
+  it('reports a still-valid paid tier before the store answers, then the store answer', async () => {
+    Platform.OS = 'ios';
+    const renewal = { until: ahead, willRenew: true, productId: 'monthly' };
+    const store = heldStore('premium');
+    const kit = createPaymentsKit({ providers: { ios: store.provider }, storage: storageWith({ tier: 'premium', renewal }) });
+    const seen: TierState[] = [];
+    const stop = kit.watch('uid-1', (s) => seen.push(s));
+    await flush();
+    // Real timers: this is well before STORE_WAIT_MS, with the store still silent.
+    expect(seen).toEqual([{ tier: 'premium', source: 'store', server: null, renewal, remembered: true }]);
+    store.release();
+    await flush(); await flush();
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).toMatchObject({ tier: 'premium', source: 'store' });
+    expect(seen[1]!.remembered).toBeUndefined();
+    stop();
+  });
+
+  it('reports a remembered free tier at once, then moves up when the store says paid', async () => {
+    Platform.OS = 'ios';
+    const store = heldStore('premium');
+    const kit = createPaymentsKit({ providers: { ios: store.provider }, storage: storageWith({ tier: 'free', renewal: null }) });
+    const seen: string[] = [];
+    const stop = kit.watch('uid-1', (s) => seen.push(s.tier));
+    await flush();
+    expect(seen).toEqual(['free']);
+    store.release();
+    await flush(); await flush();
+    expect(seen).toEqual(['free', 'premium']);
+    stop();
+  });
+
+  it('still waits for the store when the remembered paid tier has ended, or there is none', async () => {
+    Platform.OS = 'ios';
+    for (const record of [{ tier: 'premium', renewal: { until: new Date(Date.now() - 1000).toISOString(), willRenew: true, productId: 'm' } }, undefined]) {
+      const store = heldStore('premium');
+      const kit = createPaymentsKit({ providers: { ios: store.provider }, storage: storageWith(record) });
+      const seen: string[] = [];
+      const stop = kit.watch('uid-1', (s) => seen.push(s.tier));
+      await flush(); await flush();
+      expect(seen).toEqual([]);
+      store.release();
+      await flush(); await flush();
+      expect(seen).toEqual(['premium']);
+      stop();
+    }
+  });
+
+  it('still waits for the account row when there is a backend', async () => {
+    Platform.OS = 'ios';
+    let answer!: (row: ServerSubscription | null) => void;
+    const backend = { read: () => new Promise<ServerSubscription | null>((r) => { answer = r; }) };
+    const store = heldStore('premium');
+    const kit = createPaymentsKit({ providers: { ios: store.provider }, backend, storage: storageWith({ tier: 'premium', renewal: { until: ahead, willRenew: true, productId: 'm' } }) });
+    const seen: TierState[] = [];
+    const stop = kit.watch('uid-1', (s) => seen.push(s));
+    await flush();
+    expect(seen).toEqual([]);
+    answer(null);
+    await flush();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ tier: 'premium', remembered: true });
+    stop();
+  });
+});
