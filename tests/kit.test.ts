@@ -156,6 +156,49 @@ describe('createPaymentsKit', () => {
     expect(errors).toEqual(['payments:manage']);
   });
 
+  it('on Android, says the manage page has closed when the person comes back from Google Play, then asks the store again', async () => {
+    vi.useFakeTimers();
+    try {
+      Platform.OS = 'android';
+      opened.length = 0;
+      const refresh = vi.fn(async () => {});
+      const kit = createPaymentsKit({ providers: { android: fakeProvider({ refresh }) } });
+      const closed = vi.fn();
+      const done = kit.openManage(closed);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(opened).toEqual(['https://play.google.com/store/account/subscriptions']);
+      appState.listeners.forEach((l) => l('background'));
+      await vi.advanceTimersByTimeAsync(60_000); // a minute in Google Play
+      expect(closed).not.toHaveBeenCalled();
+      appState.listeners.forEach((l) => l('active'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(closed).toHaveBeenCalledOnce();
+      expect(refresh).toHaveBeenCalledOnce();
+      await done;
+      expect(appState.listeners.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not say the manage page closed when the app never left for it', async () => {
+    vi.useFakeTimers();
+    try {
+      Platform.OS = 'android';
+      const refresh = vi.fn(async () => {});
+      const kit = createPaymentsKit({ providers: { android: fakeProvider({ refresh }) } });
+      const closed = vi.fn();
+      const done = kit.openManage(closed);
+      await vi.advanceTimersByTimeAsync(3000);
+      await done;
+      expect(closed).not.toHaveBeenCalled();
+      expect(refresh).not.toHaveBeenCalled();
+      expect(appState.listeners.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('asks the store again after the in-app manage sheet closes, then once more a little later', async () => {
     vi.useFakeTimers();
     try {
@@ -178,6 +221,21 @@ describe('createPaymentsKit', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('returns from openManage only once every screen has heard the store again', async () => {
+    let tier = 'premium';
+    // The store takes a moment to answer each check.
+    const currentTier = () => new Promise<string>((r) => setTimeout(() => r(tier), 20));
+    const kit = createPaymentsKit({ providers: { ios: fakeProvider({ openManage: async () => true, refresh: async () => {}, currentTier }) } });
+    const seen: TierState[] = [];
+    const stop = kit.watch(null, (s) => seen.push(s));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(seen.at(-1)?.tier).toBe('premium');
+    tier = 'free'; // the subscription ended in Apple's sheet
+    await kit.openManage();
+    expect(seen.at(-1)?.tier).toBe('free');
+    stop();
   });
 
   it("drops the later checks when someone else signs in or out", async () => {

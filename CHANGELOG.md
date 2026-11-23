@@ -2,6 +2,13 @@
 
 Release notes for app-payments-kit, newest first. Each version is tagged in git (`v2.5.0`).
 
+## 2.10.0
+
+Nothing to change in apps.
+
+- **The loader after Manage now works on Android.** When `openManage(onClosed)` opens the store's page instead of Apple's in-app sheet (Google Play, or an App Store page for a subscription billed elsewhere), the kit now waits for the person to return to the app, then calls `onClosed` and asks the store again for the next 45 seconds, as it does after the sheet. Before, `onClosed` was never called there, so the Premium page showed no loader and the status changed a few seconds later without notice. If the app does not leave within 3 seconds, or stays away for more than 30 minutes, nothing is called.
+- **`openManage()` returns once the store's new answer has reached every screen.** `refresh()` now waits for each `watch()` check it starts, so a page can tell, when `openManage()` returns, whether anything changed. app-subscriptions-kit 4.0.0 uses this to close its loader quietly when the person closed the store's screen without a change.
+
 ## 2.9.0
 
 Nothing to change in apps. iPhone purchases work as before.
