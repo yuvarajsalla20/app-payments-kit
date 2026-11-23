@@ -87,7 +87,7 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
 
   const notReady: BuyResult = { ok: false, cancelled: false, message: messages.notReady };
   /** Each watch() adds its own "check again", so refresh() can update every screen at once. */
-  const checkers = new Set<() => void>();
+  const checkers = new Set<() => Promise<unknown>>();
   let later: ReturnType<typeof setTimeout>[] = [];
   /**
    * What the person can change in the manage sheet (auto-renew on or off, the plan), as text, to tell when it has changed.
@@ -230,7 +230,8 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
         } catch (e) {
           report('payments:refresh', e);
         }
-        checkers.forEach((c) => c());
+        // 2.10.0: waits for every screen's check, so openManage() returns once the answer has reached them.
+        await Promise.all([...checkers].map((c) => c()));
         if (!storeDone && changed()) {
           storeDone = true;
           if (!options.backend) stop();
@@ -384,7 +385,7 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
         else retry = setTimeout(() => void checkStore(), STORE_RETRY_MS(attempt++));
         emit();
       };
-      const check = () => { void checkServer(); void checkStore(); };
+      const check = () => Promise.all([checkServer(), checkStore()]);
       const onTester = () => emit();
       testerListeners.add(onTester);
       checkers.add(check);
@@ -399,10 +400,10 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
         }
         emit();
       });
-      check();
-      const sub = AppState.addEventListener('change', (s) => { if (s === 'active') check(); });
+      void check();
+      const sub = AppState.addEventListener('change', (s) => { if (s === 'active') void check(); });
       // Back online after a failed check: try the store (and the row) at once instead of waiting for the next retry.
-      const offOnline = options.onOnline?.(() => { if (live && failing) check(); }) ?? (() => undefined);
+      const offOnline = options.onOnline?.(() => { if (live && failing) void check(); }) ?? (() => undefined);
       return () => { live = false; clearTimeout(storeWait); clearTimeout(retry); stopStore(); sub.remove(); offOnline(); testerListeners.delete(onTester); checkers.delete(check); };
     },
   };

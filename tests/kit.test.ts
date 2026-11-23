@@ -223,6 +223,21 @@ describe('createPaymentsKit', () => {
     }
   });
 
+  it('returns from openManage only once every screen has heard the store again', async () => {
+    let tier = 'premium';
+    // The store takes a moment to answer each check.
+    const currentTier = () => new Promise<string>((r) => setTimeout(() => r(tier), 20));
+    const kit = createPaymentsKit({ providers: { ios: fakeProvider({ openManage: async () => true, refresh: async () => {}, currentTier }) } });
+    const seen: TierState[] = [];
+    const stop = kit.watch(null, (s) => seen.push(s));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(seen.at(-1)?.tier).toBe('premium');
+    tier = 'free'; // the subscription ended in Apple's sheet
+    await kit.openManage();
+    expect(seen.at(-1)?.tier).toBe('free');
+    stop();
+  });
+
   it("drops the later checks when someone else signs in or out", async () => {
     vi.useFakeTimers();
     try {
