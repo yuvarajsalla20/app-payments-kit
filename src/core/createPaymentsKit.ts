@@ -102,6 +102,9 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
   // Apple takes a few seconds to pass a change on: look every 2 seconds at first, then less often, for 45 seconds.
   /** The longest watch() waits for the store's first answer before it reports what it has (the store may be offline). */
   const STORE_WAIT_MS = 5000;
+  /** How soon the app must leave for the store's page, and the longest it may stay away, for the checks on return to run. */
+  const LEAVE_MS = 3000;
+  const AWAY_MS = 30 * 60_000;
   const LATER_MS = [2000, 4000, 6000, 8000, 10000, 12000, 15000, 20000, 30000, 45000];
 
   /** True when the server row gives this tier right now. */
@@ -109,6 +112,25 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
     if (!row || !row.activeUntil || Date.parse(row.activeUntil) <= Date.now()) return FREE;
     return tiers.includes(row.tier) ? row.tier : FREE;
   };
+
+  /**
+   * Resolves true when the app goes to the background and then comes back (the person left for the store's page and returned),
+   * or false when it never leaves within LEAVE_MS (the page opened inside the app, or not at all) or is away longer than AWAY_MS.
+   */
+  const cameBack = () => new Promise<boolean>((resolve) => {
+    let left = false;
+    const done = (v: boolean) => {
+      clearTimeout(leave);
+      clearTimeout(away);
+      sub.remove();
+      resolve(v);
+    };
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') { if (left) done(true); } else left = true;
+    });
+    const leave = setTimeout(() => { if (!left) done(false); }, LEAVE_MS);
+    const away = setTimeout(() => done(false), AWAY_MS);
+  });
 
   const kit = {
     tiers,
@@ -150,7 +172,8 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
     /**
      * The store's own manage screen inside the app where there is one, else its manage page.
      * `onClosed` runs once, the moment the in-app screen closes (before the store is asked again), so a page can show its loader
-     * straight away instead of after the checks. It is not called when the store's web page opens instead.
+     * straight away instead of after the checks. Where the store's web page opens instead (Google Play, or a subscription billed
+     * elsewhere), it runs when the person comes back to the app (2.10.0), and the store is asked again as after the sheet.
      */
     async openManage(onClosed?: () => void): Promise<void> {
       if (ready && provider!.openManage) {
@@ -173,7 +196,17 @@ export function createPaymentsKit(options: PaymentsKitOptions) {
         }
       }
       const url = kit.manageUrl();
-      if (url) await Linking.openURL(url);
+      if (!url) return;
+      // 2.10.0: the store's web page (Google Play, or the App Store for a subscription billed elsewhere) sends the app to the
+      // background. With `onClosed`, the kit waits for the person to come back, then calls it and asks the store again, as after
+      // the in-app sheet, so the page shows its loader on Android as well.
+      const before = renewalNow();
+      const back = onClosed ? cameBack() : null;
+      await Linking.openURL(url);
+      if (back && (await back)) {
+        try { onClosed!(); } catch (e) { report('payments:manage', e); }
+        await kit.refresh(before);
+      }
     },
 
     /**

@@ -2,7 +2,7 @@
 
 Payments for React Native and Expo apps (iOS, Android and web). One API over the App Store, Google Play and the website; any number of tiers and plans; an optional server webhook and `subscriptions` table so the database knows who paid; and a developer-only switch to try paid features without buying.
 
-**Current version: 2.9.0** (tag `v2.9.0`)
+**Current version: 2.10.0** (tag `v2.10.0`)
 
 It has no screens. For the Plans screen, the Premium page, locks and `canUse()`, add [app-subscriptions-kit](https://github.com/yuvarajsalla20/app-subscriptions-kit) on top. For the full App Store Connect, RevenueCat and EAS setup with screenshots, follow the Subscriptions and Payments Playbook in the app's `runbooks/` folder.
 
@@ -26,14 +26,14 @@ Tools that work alongside them: [code-review-kit](https://github.com/yuvarajsall
 ```jsonc
 // package.json
 "dependencies": {
-  "app-payments-kit": "git+https://github.com/yuvarajsalla20/app-payments-kit.git#<full SHA of v2.9.0>"
+  "app-payments-kit": "git+https://github.com/yuvarajsalla20/app-payments-kit.git#<full SHA of v2.10.0>"
 },
 "kitVersions": {
-  "app-payments-kit": "v2.9.0"
+  "app-payments-kit": "v2.10.0"
 }
 ```
 
-Pin the full commit SHA of a release tag, and write the tag in `kitVersions`. Find a SHA with `git ls-remote https://github.com/yuvarajsalla20/app-payments-kit refs/tags/v2.9.0`.
+Pin the full commit SHA of a release tag, and write the tag in `kitVersions`. Find a SHA with `git ls-remote https://github.com/yuvarajsalla20/app-payments-kit refs/tags/v2.10.0`.
 
 **Peer dependencies** (all optional except `react-native`; install only the vendors you use):
 
@@ -106,7 +106,7 @@ const stop = payments.watch(userId, ({ tier, source, renewal }) => setTier(tier)
 const plans = await payments.loadPlans();     // [] when no provider is ready (no key, Expo Go): show "coming soon", never made-up prices
 const result = await payments.buy(plans[0]);  // { ok: true, tier } | { ok: false, cancelled, pending?, message }
 await payments.restore();
-await payments.openManage(() => showLoader()); // the store's manage sheet (inside the app on iPhone); the callback runs when it closes
+await payments.openManage(() => showLoader()); // the store's manage sheet (inside the app on iPhone) or page (Google Play); the callback runs when the person returns
 ```
 
 On sign-out call `payments.stop()`, so the next person on the phone never buys on the last person's account.
@@ -134,7 +134,7 @@ On sign-out call `payments.stop()`, so the next person on the phone never buys o
 | `loadPlans()` | Store plans with prices in the buyer's currency, and a trial only when the person can still use it (`trial`: its period as the store sets it, such as MONTH × 1) |
 | `buy(plan)`, `restore()` | Purchases, with friendly store errors |
 | `redeemCode(code?)`, `canRedeemCode` | Offer codes (not on the web) |
-| `openManage(onClosed?)` | Apple's manage sheet inside the app on iPhone; the store's page elsewhere. Then checks again until auto-renew or the plan changes |
+| `openManage(onClosed?)` | Apple's manage sheet inside the app on iPhone; the store's page elsewhere. `onClosed` runs when the sheet closes or the person returns from the page. Then checks again until auto-renew or the plan changes |
 | `manageUrl()` | The store's manage page address |
 | `refresh(before?)` | Ask the store again and update every `watch()` |
 | `loadOffer(id)`, `buyOffer(offer)` | App Store promotional offers for people who already subscribe (RevenueCat signs them with the In-App Purchase key) |
