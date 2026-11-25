@@ -2,6 +2,10 @@
 
 Release notes for app-payments-kit, newest first. Each version is tagged in git (`v2.5.0`).
 
+## 2.10.1
+
+Nothing changes for apps. `createPaymentsKit.ts` (413 lines) is split by job: its options, state types, storage keys and timings (`core/options.ts`) and the check for a return from the store's page (`core/cameBack.ts`). A misplaced comment on the refresh timings is corrected. Exports are unchanged.
+
 ## 2.10.0
 
 Nothing to change in apps.
