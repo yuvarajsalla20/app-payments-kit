@@ -2,6 +2,16 @@
 
 Release notes for app-payments-kit, newest first. Each version is tagged in git (`v2.5.0`).
 
+## 2.11.0
+
+Nothing to change in apps that use Supabase or no server. The webhook now works with any database.
+
+- **One webhook for every backend.** The webhook logic (the secret, the provider's event, repeats, late events, transfers) moves from the Supabase function into `server/`, plain JavaScript that runs in Node, Deno and Workers. It writes through a `SubscriptionStore`, four functions that are the only part that knows the database. Import it from `app-payments-kit/server.mjs`: `handlePaymentEvent` for any runtime, `paymentsWebhook` for any Request and Response runtime.
+- **Firebase is ready.** `app-payments-kit/firebase-function.mjs` is the webhook as a Firebase Cloud Function writing `subscriptions/{uid}` in Firestore; an app exports it with one line in `functions/index.js`. `firestoreBackend(db)` from `app-payments-kit/firestore` reads that document in the app, and `firestore/subscriptions.rules` lets each account read only its own. Setup: docs/setup.md.
+- **Supabase works as before**, through the new `supabaseStore`. The Edge Function file is now short and loads the shared code from this tag (`@v2.11.0`). Apps that copied the function earlier keep working; copy it again to take later webhook fixes.
+- **Account ids follow the store.** Supabase still accepts only UUIDs (its user ids). Other stores accept any id that is not a store's anonymous id, which fits Firebase user ids.
+- Adding a database is described in docs/providers.md.
+
 ## 2.10.1
 
 Nothing changes for apps. `createPaymentsKit.ts` (413 lines) is split by job: its options, state types, storage keys and timings (`core/options.ts`) and the check for a return from the store's page (`core/cameBack.ts`). A misplaced comment on the refresh timings is corrected. Exports are unchanged.

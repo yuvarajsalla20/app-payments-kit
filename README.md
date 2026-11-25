@@ -1,8 +1,8 @@
 # app-payments-kit
 
-Payments for React Native and Expo apps (iOS, Android and web). One API over the App Store, Google Play and the website; any number of tiers and plans; an optional server webhook and `subscriptions` table so the database knows who paid; and a developer-only switch to try paid features without buying.
+Payments for React Native and Expo apps (iOS, Android and web). One API over the App Store, Google Play and the website; any number of tiers and plans; an optional server webhook that works with any database (ready for Supabase and Firebase) so the server knows who paid; and a developer-only switch to try paid features without buying.
 
-**Current version: 2.10.1** (tag `v2.10.1`)
+**Current version: 2.11.0** (tag `v2.11.0`)
 
 It has no screens. For the Plans screen, the Premium page, locks and `canUse()`, add [app-subscriptions-kit](https://github.com/yuvarajsalla20/app-subscriptions-kit) on top. For the full App Store Connect, RevenueCat and EAS setup with screenshots, follow the Subscriptions and Payments Playbook in the app's `runbooks/` folder.
 
@@ -26,14 +26,14 @@ Tools that work alongside them: [code-review-kit](https://github.com/yuvarajsall
 ```jsonc
 // package.json
 "dependencies": {
-  "app-payments-kit": "git+https://github.com/yuvarajsalla20/app-payments-kit.git#<full SHA of v2.10.1>"
+  "app-payments-kit": "git+https://github.com/yuvarajsalla20/app-payments-kit.git#<full SHA of v2.11.0>"
 },
 "kitVersions": {
-  "app-payments-kit": "v2.10.1"
+  "app-payments-kit": "v2.11.0"
 }
 ```
 
-Pin the full commit SHA of a release tag, and write the tag in `kitVersions`. Find a SHA with `git ls-remote https://github.com/yuvarajsalla20/app-payments-kit refs/tags/v2.10.1`.
+Pin the full commit SHA of a release tag, and write the tag in `kitVersions`. Find a SHA with `git ls-remote https://github.com/yuvarajsalla20/app-payments-kit refs/tags/v2.11.0`.
 
 **Peer dependencies** (all optional except `react-native`; install only the vendors you use):
 
@@ -43,6 +43,8 @@ Pin the full commit SHA of a release tag, and write the tag in `kitVersions`. Fi
 | `react-native-purchases` ≥ 8 | `app-payments-kit/revenuecat-mobile` (App Store, Google Play). Needs a development build, not Expo Go |
 | `@revenuecat/purchases-js` ≥ 1.0 | `app-payments-kit/revenuecat-web` (website) |
 | `@supabase/supabase-js` ≥ 2.39 | `app-payments-kit/supabase` (server row) |
+| `firebase` ≥ 11 | `app-payments-kit/firestore` (server row) |
+| `firebase-admin` ≥ 12, `firebase-functions` ≥ 6 | `app-payments-kit/firebase-function.mjs`, in the app's `functions` package only |
 
 ## Entry points
 
@@ -52,10 +54,40 @@ Pin the full commit SHA of a release tag, and write the tag in `kitVersions`. Fi
 | `app-payments-kit/revenuecat-mobile` | `revenueCatMobile({ iosKey, androidKey, tiers, plans })`: the App Store and Google Play through RevenueCat |
 | `app-payments-kit/revenuecat-web` | `revenueCatWeb({ apiKey, plans })`: card checkout on the website through RevenueCat Web Billing and your Stripe account |
 | `app-payments-kit/supabase` | `supabaseBackend(supabase)`: reads the account's own `subscriptions` row |
+| `app-payments-kit/firestore` | `firestoreBackend(db)`: reads the account's own `subscriptions/{uid}` document in Cloud Firestore |
+| `app-payments-kit/server.mjs` | The webhook for any runtime and any database, in plain JavaScript: `handlePaymentEvent`, `paymentsWebhook` (Request and Response), the `SubscriptionStore` interface, and the ready-made stores `supabaseStore` and `firestoreStore` |
+| `app-payments-kit/firebase-function.mjs` | `paymentsWebhook`, the webhook as a Firebase Cloud Function writing Firestore. One line in the app's `functions/index.js` |
+| `firestore/subscriptions.rules` | Firestore rules: each account reads only its own document; only the webhook writes |
 | `supabase/sql/subscriptions.sql` | Tables `tiers`, `subscriptions`, `subscription_events`; `current_tier(uid)`, `has_tier(uid, tier)`, `is_premium(uid)` for your own rules; row-level security. `subscriptions.down.sql` removes them |
-| `supabase/functions/payments-webhook` | The Edge Function the provider calls on every buy, renewal, cancel, refund and transfer. Checks a secret, skips repeats and late events, writes the row |
+| `supabase/functions/payments-webhook` | The Edge Function the provider calls on every buy, renewal, cancel, refund and transfer, using `supabaseStore` |
 
-The server pieces are optional. An app with no server (such as a Firebase app) uses the store alone: `watch()` then reports the tier and `renewal` straight from RevenueCat.
+The server pieces are optional. An app with no server uses the store alone: `watch()` then reports the tier and `renewal` straight from RevenueCat.
+
+## Any backend
+
+The webhook logic (check the secret, read the provider's event, skip repeats and late events, handle transfers) is written once in `server/`. A **store** is the only part that knows the database, and the app reads the result through a **backend**:
+
+| Database | Server (webhook) | App |
+|---|---|---|
+| Supabase | `supabase/functions/payments-webhook` (`supabaseStore`) | `supabaseBackend(supabase)` |
+| Firebase | `export { paymentsWebhook } from 'app-payments-kit/firebase-function.mjs';` (`firestoreStore`) | `firestoreBackend(db)` |
+| Anything else | `paymentsWebhook({ secret, tiers, store })` with your own `SubscriptionStore` (four functions) | Your own `SubscriptionBackend` (one function, `read(userId)`) |
+
+A Firebase app, in full:
+
+```js
+// functions/index.js
+export { paymentsWebhook } from 'app-payments-kit/firebase-function.mjs';
+```
+
+```ts
+// payments.ts
+import { firestoreBackend } from 'app-payments-kit/firestore';
+// …
+backend: firestoreBackend(db),
+```
+
+Plus the rules in `firestore/subscriptions.rules` and the webhook address in RevenueCat ([docs/setup.md](docs/setup.md)). How to add another database: [docs/providers.md](docs/providers.md#adding-a-new-database).
 
 ## Quick start
 
@@ -82,7 +114,7 @@ const mobile = revenueCatMobile({
 export const payments = createPaymentsKit({
   tiers,
   providers: { ios: mobile, android: mobile },         // add web: revenueCatWeb(...) on the website
-  // backend: supabaseBackend(supabase),               // optional server row
+  // backend: supabaseBackend(supabase),               // optional server row (or firestoreBackend(db))
   tester: __DEV__,                                     // the "pretend tier" switch, never in store builds
   testerStorage: AsyncStorage,
   storage: AsyncStorage,                               // the last known tier per account, for a launch with no connection
@@ -117,7 +149,7 @@ On sign-out call `payments.stop()`, so the next person on the phone never buys o
 |---|---|
 | `providers` | `{ ios?, android?, web?, default? }`: one `PaymentProvider` per platform |
 | `tiers` | Lowest first, starting with `free` |
-| `backend` | Optional `SubscriptionBackend`, such as `supabaseBackend(supabase)` |
+| `backend` | Optional `SubscriptionBackend`, such as `supabaseBackend(supabase)` or `firestoreBackend(db)` |
 | `tester` | `true` turns on the tester switch. Pass `__DEV__` |
 | `testerStorage` | Where the tester tier is kept (AsyncStorage fits) |
 | `storage` | Where each account's last known tier is kept, for launches when the store can't be reached (AsyncStorage fits). Default: `testerStorage` |
@@ -155,7 +187,7 @@ On sign-out call `payments.stop()`, so the next person on the phone never buys o
 
 Inside an iPhone or Android app, digital subscriptions normally must use Apple's or Google's billing; card checkout fits the website.
 
-A vendor is a `PaymentProvider` (see `src/core/types.ts`). Adding one (Stripe without RevenueCat, Paddle, Razorpay) is one folder in `src/providers` plus one file in the webhook. Step by step in [docs/providers.md](docs/providers.md), which also maps every folder in this repo.
+A vendor is a `PaymentProvider` (see `src/core/types.ts`). Adding one (Stripe without RevenueCat, Paddle, Razorpay) is one folder in `src/providers` plus one file in `server/`. Step by step in [docs/providers.md](docs/providers.md), which also maps every folder in this repo.
 
 ## Failures
 
@@ -163,13 +195,13 @@ Apple, Google and Stripe hold the money: the kit never charges or refunds. A can
 
 ## Setup guides
 
-- Phones (store products, RevenueCat, the SQL and the webhook): [docs/setup.md](docs/setup.md)
+- Phones (store products, RevenueCat, the database and the webhook for Supabase or Firebase): [docs/setup.md](docs/setup.md)
 - Website (Stripe and RevenueCat Web Billing): [docs/revenuecat-web.md](docs/revenuecat-web.md)
-- New vendors and the folder map: [docs/providers.md](docs/providers.md)
+- New vendors, new databases and the folder map: [docs/providers.md](docs/providers.md)
 
 ## Testing
 
-`npm test` runs the unit tests (tiers, the RevenueCat provider against a fake store, `watch`, the tester switch, webhook event handling). In an app, the tester switch works on the web and in Expo Go; real sandbox purchases need a development build.
+`npm test` runs the unit tests (tiers, the RevenueCat provider against a fake store, `watch`, the tester switch, webhook event handling, and the webhook with each store). In an app, the tester switch works on the web and in Expo Go; real sandbox purchases need a development build.
 
 ```bash
 npm install

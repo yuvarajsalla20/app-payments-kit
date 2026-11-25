@@ -1,0 +1,9 @@
+// app-payments-kit 2.11.0: copy these two blocks inside `match /databases/{database}/documents { … }` in the app's
+// firestore.rules. Each account reads only its own subscription document; only the webhook (Admin SDK) writes them.
+match /subscriptions/{uid} {
+  allow read: if request.auth != null && request.auth.uid == uid;
+  allow write: if false;
+}
+match /subscriptionEvents/{id} {
+  allow read, write: if false;
+}
