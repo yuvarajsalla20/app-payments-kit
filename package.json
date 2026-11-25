@@ -1,7 +1,7 @@
 {
   "name": "app-payments-kit",
-  "version": "2.10.1",
-  "description": "Reusable payments for React Native / Expo apps: one API over the App Store, Google Play (RevenueCat mobile) and the website (RevenueCat web), any number of tiers and plans, a Supabase webhook and subscriptions table, and a developer-only tester switch.",
+  "version": "2.11.0",
+  "description": "Reusable payments for React Native / Expo apps: one API over the App Store, Google Play (RevenueCat mobile) and the website (RevenueCat web), any number of tiers and plans, a webhook and subscription row for any backend (ready for Supabase and Firebase), and a developer-only tester switch.",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "files": [
@@ -9,6 +9,11 @@
     "revenuecat-mobile.ts",
     "revenuecat-web.ts",
     "supabase.ts",
+    "firestore.ts",
+    "server.mjs",
+    "server",
+    "firebase-function.mjs",
+    "firestore",
     "supabase/sql",
     "supabase/functions",
     "docs"
@@ -19,6 +24,9 @@
   "peerDependencies": {
     "@revenuecat/purchases-js": ">=1.0",
     "@supabase/supabase-js": ">=2.39",
+    "firebase": ">=11",
+    "firebase-admin": ">=12",
+    "firebase-functions": ">=6",
     "react-native": ">=0.74",
     "react-native-purchases": ">=8"
   },
@@ -29,6 +37,15 @@
     "@supabase/supabase-js": {
       "optional": true
     },
+    "firebase": {
+      "optional": true
+    },
+    "firebase-admin": {
+      "optional": true
+    },
+    "firebase-functions": {
+      "optional": true
+    },
     "react-native-purchases": {
       "optional": true
     }
@@ -36,6 +53,7 @@
   "devDependencies": {
     "@revenuecat/purchases-js": "^1.74.0",
     "@supabase/supabase-js": "^2.119.0",
+    "firebase": "^11.10.0",
     "react-native-purchases": "^10.16.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",

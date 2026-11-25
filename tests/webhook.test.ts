@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { accountIds, isNewer, plan, sameSecret, type StoredRow } from '../supabase/functions/payments-webhook/core';
-import { fromRevenueCat, type RcEvent } from '../supabase/functions/payments-webhook/revenuecat';
+import { accountIds, isNewer, plan, sameSecret, type StoredRow } from '../server/core.mjs';
+import { fromRevenueCat, type RcEvent } from '../server/revenuecat.mjs';
 
 const U1 = '11111111-1111-4111-8111-111111111111';
 const U2 = '22222222-2222-4222-8222-222222222222';

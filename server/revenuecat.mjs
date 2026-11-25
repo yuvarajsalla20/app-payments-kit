@@ -1,37 +1,44 @@
-// RevenueCat webhook events → the common Change shape. Pure, so tests can check it.
-import type { Change, Status } from './core.ts';
+// RevenueCat webhook events → the common Change shape. Plain JavaScript and pure, so every backend shares it and tests can check it.
 
-export type RcEvent = {
-  id?: string;
-  type: string;
-  app_user_id?: string;
-  original_app_user_id?: string;
-  aliases?: string[];
-  product_id?: string;
-  store?: string;
-  environment?: string;
-  period_type?: string;
-  cancel_reason?: string;
-  entitlement_ids?: string[] | null;
-  expiration_at_ms?: number | null;
-  event_timestamp_ms?: number | null;
-  transferred_from?: string[];
-  transferred_to?: string[];
-};
+/** @typedef {import('./core.mjs').Change} Change */
+/** @typedef {import('./core.mjs').Status} Status */
+
+/**
+ * @typedef {object} RcEvent
+ * @property {string} [id]
+ * @property {string} type
+ * @property {string} [app_user_id]
+ * @property {string} [original_app_user_id]
+ * @property {string[]} [aliases]
+ * @property {string} [product_id]
+ * @property {string} [store]
+ * @property {string} [environment]
+ * @property {string} [period_type]
+ * @property {string} [cancel_reason]
+ * @property {string[] | null} [entitlement_ids]
+ * @property {number | null} [expiration_at_ms]
+ * @property {number | null} [event_timestamp_ms]
+ * @property {string[]} [transferred_from]
+ * @property {string[]} [transferred_to]
+ */
 
 const FOREVER_MS = 100 * 365 * 86_400_000;
 
 /**
  * Turns one RevenueCat event into a Change, or null when it changes nothing.
  * `tiers` lowest first, starting with 'free'; entitlement ids in RevenueCat are the tier names.
+ * @param {RcEvent} e
+ * @param {readonly string[]} tiers
+ * @param {Date} now
+ * @returns {Change | null}
  */
-export function fromRevenueCat(e: RcEvent, tiers: string[], now: Date): Change | null {
+export function fromRevenueCat(e, tiers, now) {
   if (!e?.type || e.type === 'TEST') return null;
   const base = {
     eventId: e.id ?? `${e.type}:${e.app_user_id ?? ''}:${e.event_timestamp_ms ?? now.getTime()}`,
     provider: 'revenuecat',
     type: e.type,
-    userIds: [e.app_user_id, e.original_app_user_id, ...(e.aliases ?? [])].filter((x): x is string => !!x),
+    userIds: [e.app_user_id, e.original_app_user_id, ...(e.aliases ?? [])].filter((x) => !!x).map(String),
     productId: e.product_id ?? null,
     store: e.store ?? null,
     environment: e.environment ?? null,
@@ -43,12 +50,19 @@ export function fromRevenueCat(e: RcEvent, tiers: string[], now: Date): Change |
   // Only entitlements that are paid tiers count. A product not attached to one never unlocks anything.
   const paid = (e.entitlement_ids ?? []).filter((id) => id !== 'free' && tiers.includes(id));
   if (!paid.length) return null;
-  const tier = paid.sort((a, b) => tiers.indexOf(b) - tiers.indexOf(a))[0]!;
+  const tier = paid.sort((a, b) => tiers.indexOf(b) - tiers.indexOf(a))[0];
   const end = e.expiration_at_ms ? new Date(e.expiration_at_ms).toISOString() : null;
   const nowIso = now.toISOString();
   const forever = new Date(now.getTime() + FOREVER_MS).toISOString();
-  const paying: Status = e.period_type === 'TRIAL' ? 'trial' : 'active';
-  const out = (activeUntil: string | null | undefined, status: Status | undefined, willRenew: boolean | undefined): Change => ({ ...base, tier, activeUntil, status, willRenew });
+  /** @type {Status} */
+  const paying = e.period_type === 'TRIAL' ? 'trial' : 'active';
+  /**
+   * @param {string | null | undefined} activeUntil
+   * @param {Status | undefined} status
+   * @param {boolean | undefined} willRenew
+   * @returns {Change}
+   */
+  const out = (activeUntil, status, willRenew) => ({ ...base, tier, activeUntil, status, willRenew });
 
   switch (e.type) {
     case 'INITIAL_PURCHASE':

@@ -25,7 +25,8 @@ createPaymentsKit({ providers: { ios: mobile, android: mobile, web }, ... });
 
 ```
 app-payments-kit/
-  revenuecat-mobile.ts   revenuecat-web.ts   supabase.ts      ← entry points (one per vendor or backend)
+  revenuecat-mobile.ts   revenuecat-web.ts   supabase.ts   firestore.ts   ← app entry points (one per vendor or backend)
+  server.mjs   firebase-function.mjs                                        ← server entry points (plain JavaScript)
   src/
     index.ts                                                   ← `app-payments-kit`: the core only
     core/        createPaymentsKit, types (Plan, PaymentProvider …), tiers, messages
@@ -36,12 +37,19 @@ app-payments-kit/
         web.ts      revenueCatWeb    (@revenuecat/purchases-js)
     backends/
       supabase.ts   supabaseBackend: reads the account's subscriptions row
+      firestore.ts  firestoreBackend: reads the account's subscriptions/{uid} document
+  server/                     the webhook for any runtime and any database (Node, Deno, Workers)
+    core.mjs                  vendor-free and database-free: order, repeats, transfers, the rows to write
+    revenuecat.mjs            RevenueCat event → Change
+    handler.mjs               handlePaymentEvent, the PROVIDERS list, the SubscriptionStore interface, paymentsWebhook
+    stores/
+      supabase.mjs            supabaseStore: the tables in supabase/sql
+      firestore.mjs           firestoreStore: subscriptions/{uid} and subscriptionEvents/{id}
+  firebase-function.mjs       the webhook as a Firebase Cloud Function (firestoreStore)
+  firestore/subscriptions.rules   rules for the Firestore documents
   supabase/
     sql/                      the tables and checks
-    functions/payments-webhook/
-      core.ts                 vendor-free: order, repeats, transfers, writing the row
-      revenuecat.ts           RevenueCat event → Change
-      index.ts                the Edge Function, with the PROVIDERS list
+    functions/payments-webhook/index.ts   the Edge Function (supabaseStore)
   tests/                      one test file per piece, with stand-ins for the vendor SDKs in tests/stubs
 ```
 
@@ -74,13 +82,33 @@ Say you add Paddle without RevenueCat. Use the name everywhere: folder `paddle`,
 
 ### 2. The server side
 
-1. Make `supabase/functions/payments-webhook/paddle.ts` exporting `fromPaddle(event, tiers, now): Change | null`.
-   Return null for events that change nothing. Look at `revenuecat.ts` for buy, renewal, cancel, refund and expiry.
-2. Add it to `PROVIDERS` in `index.ts`. The vendor then calls `…/functions/v1/payments-webhook/paddle`. The function
-   checks `PAYMENTS_WEBHOOK_SECRET`; if the vendor signs its webhooks instead, check that signature too.
+1. Make `server/paddle.mjs` exporting `fromPaddle(event, tiers, now): Change | null`, in plain JavaScript with JSDoc
+   types. Return null for events that change nothing. Look at `revenuecat.mjs` for buy, renewal, cancel, refund and expiry.
+2. Add it to `PROVIDERS` in `server/handler.mjs`. The vendor then calls the webhook address ending in `/paddle`. The
+   webhook checks `PAYMENTS_WEBHOOK_SECRET`; if the vendor signs its webhooks instead, check that signature too.
 3. Add its cases to `tests/webhook.test.ts`.
 
-`core.ts` does the rest the same way for every vendor: skipping repeats and late events, transfers and writing the row.
+`core.mjs` and `handler.mjs` do the rest the same way for every vendor and every database: skipping repeats and late
+events, transfers and writing the rows.
+
+## Adding a new database
+
+The webhook never talks to a database itself. It calls a `SubscriptionStore` (defined in `server/handler.mjs`), so any
+database works once it has one:
+
+| Function | What it must do |
+|---|---|
+| `hasEvent(eventId)` | True when this event was already applied (a repeat delivery) |
+| `readRows(userIds)` | The stored rows of these accounts (`user_id`, `tier`, `active_until`, `will_renew`, `event_at`); an account with none is left out |
+| `writeRow(row)` | Write one row; return `'written'`, or `'no-account'` when the database has no such account. Throw on any other failure, so the provider retries |
+| `logEvent(event)` | Record the event after its rows are written |
+| `isAccountId(id)` | Optional: which user ids are real accounts. Default: any id that is not a store's anonymous id |
+
+1. Make `server/stores/<name>.mjs` exporting `<name>Store(client, options)`, and export it from `server/index.mjs`.
+2. On the app side, make `src/backends/<name>.ts` exporting `<name>Backend(client): SubscriptionBackend` (one method,
+   `read(userId)`), plus the root entry file `<name>.ts`.
+3. Run it with `paymentsWebhook({ secret, tiers, store })` (any Request and Response runtime) or `handlePaymentEvent`
+   (any other), and add a fake client to `tests/server.test.ts`, copying the Firestore and Supabase cases.
 
 ### 3. Docs
 

@@ -23,20 +23,60 @@ Tip: put a free trial on the longest plan only, so people can't take a free week
 
 `react-native-purchases` needs a development or store build. Wherever no provider is ready (no key, Expo Go), `payments.ready` is false and `loadPlans()` returns nothing. To sell on the website too, add `revenueCatWeb` ([revenuecat-web.md](revenuecat-web.md)).
 
-## 3. The database (Supabase)
+## 3. The database
+
+Choose one. The webhook (step 4) keeps it up to date; without either, the app reads the tier from the store alone.
+
+### Supabase
 
 1. Edit the `insert into public.tiers` line in `supabase/sql/subscriptions.sql` to list your tiers with their order.
 2. Run the file in the Supabase SQL Editor. It is safe to run again. `subscriptions.down.sql` undoes it.
 3. Use `public.has_tier(user_id, 'premium')` in your own triggers and policies for limits that matter (the file ends with an example).
 
-The app can read only its own row and can't change it. Only the webhook writes it.
+The app can read only its own row and can't change it. Only the webhook writes it. In the app: `backend: supabaseBackend(supabase)` from `app-payments-kit/supabase`.
+
+### Firebase (Cloud Firestore)
+
+1. Copy the two blocks in `firestore/subscriptions.rules` into the app's `firestore.rules` and deploy them.
+2. In the app: `backend: firestoreBackend(db)` from `app-payments-kit/firestore`. It reads `subscriptions/{uid}`.
+
+The app can read only its own document and can't change it. Only the webhook writes it.
 
 ## 4. The webhook
+
+The logic is the same for every database (`server/`); only the store differs.
+
+### Supabase
 
 1. Copy `supabase/functions/payments-webhook` into your app's `supabase/functions` folder.
 2. In Supabase → Edge Functions → Secrets, add `PAYMENTS_WEBHOOK_SECRET` (a long random string) and, if you have more than one paid tier, `PAYMENTS_TIERS` (for example `free,plus,pro`).
 3. Deploy: `npx supabase functions deploy payments-webhook --project-ref <ref> --no-verify-jwt`
 4. In RevenueCat → Integrations → Webhooks, add `https://<ref>.supabase.co/functions/v1/payments-webhook/revenuecat` with the Authorization header `Bearer <the same secret>`, then press "Send test event". It should answer `ok`.
+
+The function loads the kit's server code from the tag named in its import (`@v2.11.0`). Keep that tag equal to the kit
+version the app pins.
+
+### Firebase
+
+1. Add `app-payments-kit` (the same pin as the app), `firebase-admin` and `firebase-functions` to the `functions`
+   package, then add one line to `functions/index.js`:
+
+   ```js
+   export { paymentsWebhook } from 'app-payments-kit/firebase-function.mjs';
+   ```
+
+   For another region: `export const paymentsWebhook = createPaymentsWebhook({ region: 'europe-west1' });`
+2. Deploy: `firebase deploy --only functions`. The first deploy asks for `PAYMENTS_WEBHOOK_SECRET` (a long random
+   string) and `PAYMENTS_TIERS` (e.g., `free,premium`).
+3. In RevenueCat → Integrations → Webhooks, add the function's URL (printed by the deploy) with the Authorization header
+   `Bearer <the same secret>`, then press "Send test event". It should answer `ok`.
+
+The app signs in to RevenueCat with the account's Firebase user id, so each event names that id.
+
+### Any other database or runtime
+
+Write a `SubscriptionStore` for it ([providers.md](providers.md#adding-a-new-database)) and serve
+`paymentsWebhook({ secret, tiers, store })` from `app-payments-kit/server.mjs`.
 
 ## 5. Tester access without buying
 
@@ -49,6 +89,10 @@ on conflict (user_id) do update set tier = excluded.tier, active_until = exclude
 ```
 
 Take it away: `update public.subscriptions set active_until = now() where user_id = (select id from auth.users where email = 'you@example.com');`
+
+With Firebase, add the document `subscriptions/{uid}` by hand in the Firebase console, with `tier` (`premium`),
+`activeUntil` (an ISO date such as `2027-11-25T00:00:00.000Z`), `status` (`active`) and `provider` (`manual`). Set
+`activeUntil` to today to take it away.
 
 In development builds and Expo Go, `payments.setTesterTier('premium')` turns a tier on for that phone only. It never reaches the server, so database limits still follow the real tier.
 
